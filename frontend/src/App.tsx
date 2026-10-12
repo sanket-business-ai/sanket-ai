@@ -1,0 +1,403 @@
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import {
+  Activity,
+  ArrowUpRight,
+  Bell,
+  ChevronDown,
+  CircleHelp,
+  Database,
+  FileSearch,
+  LayoutDashboard,
+  ListChecks,
+  Loader2,
+  LogOut,
+  Menu,
+  Plus,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react'
+import { api, ApiError, post, setCsrf } from './lib/api'
+import type { System, User } from './lib/types'
+import { Brand, ErrorState, Loading } from './components/shared'
+import { Button } from './components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from './components/ui/dialog'
+
+const Overview = lazy(() => import('./pages/Overview'))
+const Investigations = lazy(() => import('./pages/Investigations'))
+const InvestigationView = lazy(() => import('./pages/InvestigationView'))
+const Sources = lazy(() => import('./pages/Sources'))
+const Actions = lazy(() => import('./pages/Actions'))
+const Workspace = lazy(() => import('./pages/Workspace'))
+const navigation = [
+  { to: '/', label: 'Overview', icon: LayoutDashboard },
+  { to: '/investigations', label: 'Investigations', icon: FileSearch },
+  { to: '/sources', label: 'Data sources', icon: Database },
+  { to: '/actions', label: 'Actions & monitoring', icon: ListChecks },
+]
+
+function Login({ onLogin }: { onLogin: (user: User) => void }) {
+  const [email, setEmail] = useState('founder@sanketai.local')
+  const [password, setPassword] = useState('')
+  const mutation = useMutation({
+    mutationFn: () => post<User>('/auth/login', { email, password }),
+    onSuccess: onLogin,
+  })
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    mutation.mutate()
+  }
+  return (
+    <div className="login-layout">
+      <section className="login-story">
+        <Brand />
+        <div>
+          <span className="eyebrow text-lime-200/70">YOUR BUSINESS HAS A STORY</span>
+          <h1>
+            Follow the signals.
+            <br />
+            <span>Find the reason.</span>
+          </h1>
+          <p>An autonomous investigator for the questions your dashboard can’t answer.</p>
+          <div className="mt-10 flex flex-wrap gap-3 text-xs text-white/65">
+            <span>Evidence-backed</span>
+            <span>·</span>
+            <span>Locally powered</span>
+            <span>·</span>
+            <span>Human approved</span>
+          </div>
+        </div>
+        <p className="text-xs text-white/40">Built for businesses moving Nepal forward.</p>
+      </section>
+      <section className="flex items-center justify-center p-8">
+        <div className="w-full max-w-sm">
+          <div className="mb-7 inline-flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <ShieldCheck size={25} />
+          </div>
+          <p className="eyebrow">YOUR INVESTIGATION WORKSPACE</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight">Welcome to SanketAI</h2>
+          <p className="mb-8 mt-3 text-sm leading-6 text-muted-foreground">
+            Sign in to connect the evidence and understand what’s happening in your business.
+          </p>
+          <form onSubmit={submit} className="space-y-5">
+            <div>
+              <label htmlFor="email">Email address</label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                maxLength={1024}
+              />
+            </div>
+            {mutation.error && <ErrorState error={mutation.error} />}
+            <Button type="submit" className="w-full" disabled={mutation.isPending}>
+              {mutation.isPending ? <Loader2 className="animate-spin" /> : null}Sign in to workspace
+              <ArrowUpRight />
+            </Button>
+          </form>
+          <p className="mt-8 text-xs leading-5 text-muted-foreground">
+            Use the administrator email and password configured during setup. Your business data
+            stays in your workspace.
+          </p>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function Shell({ user }: { user: User }) {
+  const client = useQueryClient()
+  const location = useLocation()
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const system = useQuery({
+    queryKey: ['system'],
+    queryFn: () => api<System>('/system'),
+    refetchInterval: 30000,
+  })
+  const logout = useMutation({
+    mutationFn: () => post('/auth/logout'),
+    onSuccess: () => {
+      setCsrf('')
+      client.clear()
+      client.setQueryData(['session'], null)
+    },
+  })
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
+  const active =
+    navigation.find((item) =>
+      item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to),
+    )?.label || 'Workspace'
+  const sidebar = (
+    <>
+      <Link to="/" aria-label="SanketAI home" className="px-6 pt-8 pb-7">
+        <Brand />
+      </Link>
+      <div className="mx-4 mb-6 rounded-lg border border-white/10 bg-white/5 px-3 py-3">
+        <div className="flex items-center gap-3">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-lime-200 text-xs font-bold text-[#17362e]">
+            WS
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-white">My business workspace</p>
+            <p className="mt-1 text-[10px] text-white/40">Business intelligence</p>
+          </div>
+          <ChevronDown size={13} className="text-white/40" />
+        </div>
+      </div>
+      <p className="px-6 pb-3 text-[9px] font-semibold tracking-[1.8px] text-white/35">WORKSPACE</p>
+      <nav aria-label="Main navigation" className="space-y-1 px-3">
+        {navigation.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/'}
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          >
+            <item.icon size={17} />
+            {item.label}
+            {item.to === '/investigations' && (
+              <span className="ml-auto text-[9px] tracking-wider opacity-40">AGENT</span>
+            )}
+          </NavLink>
+        ))}
+      </nav>
+      <div className="mx-3 mt-7 border-t border-white/10 pt-5">
+        <NavLink
+          to="/workspace"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        >
+          <Settings2 size={17} />
+          Workspace & audit
+        </NavLink>
+        <button className="nav-item w-full" onClick={() => setHelpOpen(true)}>
+          <CircleHelp size={17} />
+          How SanketAI works
+          <ArrowUpRight size={13} className="ml-auto opacity-40" />
+        </button>
+      </div>
+      <div className="mt-auto px-4 pb-4">
+        <div className="agent-sidebar">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-lime-200/10 text-lime-200">
+            <Activity size={16} />
+          </span>
+          <div>
+            <p className="text-xs font-medium text-white/90">Investigation engine</p>
+            <p className="mt-1 flex items-center gap-1.5 text-[10px] text-white/50">
+              <span
+                className={`size-1.5 rounded-full ${system.data?.worker_online ? 'bg-lime-300' : 'bg-amber-300'}`}
+              />
+              {system.data?.worker_online ? 'Worker connected' : 'Worker not connected'}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 flex items-center gap-2.5 border-t border-white/10 pt-4">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs">
+            {user.email.slice(0, 2).toUpperCase()}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] text-white/80">{user.email}</p>
+            <p className="mt-0.5 text-[10px] text-white/35">Workspace administrator</p>
+          </div>
+          <button
+            aria-label="Sign out"
+            onClick={() => logout.mutate()}
+            disabled={logout.isPending}
+            className="rounded-md p-1.5 text-white/40 hover:text-white"
+          >
+            <LogOut size={15} />
+          </button>
+        </div>
+        {logout.error && (
+          <p role="alert" className="mt-2 text-xs text-red-200">
+            {logout.error.message}
+          </p>
+        )}
+      </div>
+    </>
+  )
+  return (
+    <div className="app-layout">
+      <a href="#main-content" className="skip-link">
+        Skip to content
+      </a>
+      <aside className="sidebar hidden lg:flex">{sidebar}</aside>
+      <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+        <DialogContent className="mobile-sidebar">
+          <DialogTitle className="sr-only">Workspace navigation</DialogTitle>
+          <DialogDescription className="sr-only">
+            Navigate your SanketAI workspace.
+          </DialogDescription>
+          {sidebar}
+        </DialogContent>
+      </Dialog>
+      <div className="main-layout">
+        <header className="topbar">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              aria-label="Open navigation"
+              onClick={() => setMobileOpen(true)}
+            >
+              <Menu />
+            </Button>
+            <span className="text-xs text-muted-foreground">Workspace</span>
+            <span className="text-border">/</span>
+            <span className="text-xs font-medium">{active}</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
+              <span className="size-1.5 rounded-full bg-primary" />
+              Private workspace
+            </span>
+            <Link
+              to="/actions"
+              aria-label="View pending actions"
+              className="rounded-md p-2 text-muted-foreground hover:bg-muted"
+            >
+              <Bell size={17} />
+            </Link>
+            <span className="h-5 w-px bg-border" />
+            <Link
+              to="/investigations?new=1"
+              className="flex items-center gap-2 text-xs font-semibold text-primary"
+            >
+              <Plus size={15} />
+              <span className="hidden sm:inline">New investigation</span>
+            </Link>
+          </div>
+        </header>
+        <main id="main-content" className="page-content">
+          <Suspense fallback={<Loading />}>
+            <Routes>
+              <Route path="/" element={<Overview />} />
+              <Route path="/investigations" element={<Investigations />} />
+              <Route path="/investigations/:id" element={<InvestigationView />} />
+              <Route path="/sources" element={<Sources />} />
+              <Route path="/actions" element={<Actions />} />
+              <Route path="/workspace" element={<Workspace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+          <footer className="page-footer">
+            <span>SanketAI · Follow the evidence.</span>
+            <span className="flex items-center gap-1.5">
+              <ShieldCheck size={12} />
+              Human judgment stays in the loop
+            </span>
+          </footer>
+        </main>
+      </div>
+      <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+        <DialogContent>
+          <DialogTitle className="text-xl font-semibold">
+            From a signal to a supported explanation
+          </DialogTitle>
+          <DialogDescription className="text-sm leading-6 text-muted-foreground">
+            SanketAI investigates a question or scans your business for unusual changes.
+          </DialogDescription>
+          <ol className="space-y-5">
+            {[
+              [
+                'Connect evidence',
+                'Upload 56+ days of business CSVs or Excel files and readable PDF reports.',
+              ],
+              [
+                'Let the agent investigate',
+                'It compares periods, tests competing hypotheses, and retrieves supporting and contradictory evidence.',
+              ],
+              [
+                'Challenge the conclusion',
+                'Run a second pass against the same source snapshot. Confidence describes evidence strength, not a probability.',
+              ],
+              [
+                'Approve and monitor',
+                'Approve an internal operations task. Upload a newer outcome period to check the KPI and trigger follow-up if needed.',
+              ],
+            ].map(([title, description], i) => (
+              <li key={title} className="flex gap-3">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                  {i + 1}
+                </span>
+                <div>
+                  <h3 className="text-sm font-semibold">{title}</h3>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="rounded-lg bg-muted p-3 text-xs leading-5 text-muted-foreground">
+            <Sparkles className="mr-2 inline size-4" />
+            Local model reasoning is labeled separately from deterministic analysis. Observational
+            evidence cannot prove causality on its own.
+          </p>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+export default function App() {
+  const client = useQueryClient()
+  const session = useQuery({
+    queryKey: ['session'],
+    queryFn: async () => {
+      try {
+        const user = await api<User>('/auth/me')
+        setCsrf(user.csrf_token)
+        return user
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) return null
+        throw error
+      }
+    },
+    retry: false,
+    staleTime: 60000,
+  })
+  useEffect(() => {
+    const expired = () => {
+      setCsrf('')
+      client.clear()
+      client.setQueryData(['session'], null)
+    }
+    window.addEventListener('sanket:session-expired', expired)
+    return () => window.removeEventListener('sanket:session-expired', expired)
+  }, [client])
+  if (session.isPending) return <Loading label="Opening your workspace…" />
+  if (session.error)
+    return (
+      <div className="mx-auto max-w-lg p-8">
+        <ErrorState error={session.error} retry={() => session.refetch()} />
+      </div>
+    )
+  if (!session.data)
+    return (
+      <Login
+        onLogin={(user) => {
+          setCsrf(user.csrf_token)
+          client.setQueryData(['session'], user)
+        }}
+      />
+    )
+  return <Shell user={session.data} />
+}

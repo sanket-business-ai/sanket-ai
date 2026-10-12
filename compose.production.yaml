@@ -1,0 +1,16 @@
+services:
+  migrate:
+    environment:
+      SANKET_ENVIRONMENT: production
+      SANKET_SECURE_COOKIES: "true"
+      SANKET_DEMO_ENABLED: "false"
+  api:
+    environment:
+      SANKET_ENVIRONMENT: production
+      SANKET_SECURE_COOKIES: "true"
+      SANKET_DEMO_ENABLED: "false"
+  worker:
+    environment:
+      SANKET_ENVIRONMENT: production
+      SANKET_SECURE_COOKIES: "true"
+      SANKET_DEMO_ENABLED: "false"
