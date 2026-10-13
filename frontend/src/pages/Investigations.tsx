@@ -61,7 +61,7 @@ export default function Investigations() {
           </Button>
         }
       />
-      <Card className="mb-6 flex flex-wrap items-center justify-between gap-3 p-4">
+      <Card className="filter-bar mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="relative min-w-48 flex-1 max-w-sm">
           <Search size={16} className="absolute left-3 top-3 text-muted-foreground" />
           <label htmlFor="search-investigations" className="sr-only">
@@ -80,6 +80,7 @@ export default function Investigations() {
             <Button
               key={value}
               variant={status === value ? 'secondary' : 'ghost'}
+              aria-pressed={status === value}
               size="sm"
               onClick={() => setStatus(value)}
               className="capitalize"
@@ -95,7 +96,7 @@ export default function Investigations() {
         <ErrorState error={query.error} retry={() => query.refetch()} />
       ) : jobs.length ? (
         <Card className="overflow-hidden">
-          <div className="hidden grid-cols-[1fr_120px_130px_160px_24px] gap-4 border-b bg-muted/40 px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground md:grid">
+          <div className="hidden grid-cols-[1fr_120px_130px_160px_24px] gap-4 border-b bg-muted/40 px-6 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:grid">
             <span>Investigation</span>
             <span>Status</span>
             <span>Confidence</span>
@@ -110,7 +111,7 @@ export default function Investigations() {
                 </span>
                 <div className="min-w-0">
                   <h2 className="truncate text-sm font-medium">{job.question}</h2>
-                  <p className="mt-1 text-[10px] capitalize text-muted-foreground">
+                  <p className="mt-1 text-[11px] capitalize text-muted-foreground">
                     {job.mode} · {job.id.slice(0, 8)}
                     {job.engine === 'deterministic' ? ' · Deterministic analysis' : ''}
                   </p>

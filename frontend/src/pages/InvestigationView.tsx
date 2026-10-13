@@ -62,10 +62,10 @@ function TrailView({ trail, running }: { trail: Trail[]; running: boolean }) {
                 )}
               </span>
               <div className="flex items-start justify-between gap-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-primary">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
                   {item.data.tool?.replaceAll('_', ' ') || item.stage}
                 </p>
-                <time className="shrink-0 text-[10px] text-muted-foreground">
+                <time className="shrink-0 text-[11px] text-muted-foreground">
                   {dateTime(item.timestamp)}
                 </time>
               </div>
@@ -250,7 +250,7 @@ export default function InvestigationView() {
             )}
           </div>
           {report.model_notice && (
-            <p className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-800">
+            <p className="mb-5 rounded-lg border border-warning/20 bg-warning-bg p-3 text-xs leading-6 text-warning">
               {report.model_notice}
             </p>
           )}
@@ -278,7 +278,7 @@ export default function InvestigationView() {
                       <div className="mt-6 flex flex-wrap items-center gap-2">
                         {report.causal_chain.map((item, index) => (
                           <span className="contents" key={index}>
-                            <span className="rounded-lg border border-primary/15 bg-white/80 px-3 py-2 text-xs font-medium text-primary">
+                            <span className="rounded-lg border border-primary/15 bg-card/80 px-3 py-2 text-xs font-medium text-primary">
                               {item}
                             </span>
                             {index < report.causal_chain.length - 1 && (
@@ -337,7 +337,7 @@ export default function InvestigationView() {
                   <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
-                        <TriangleAlert size={16} className="text-amber-600" />
+                        <TriangleAlert size={16} className="text-warning" />
                         What we still don’t know
                       </CardTitle>
                     </CardHeader>
@@ -348,7 +348,7 @@ export default function InvestigationView() {
                             key={index}
                             className="flex gap-3 text-xs leading-6 text-muted-foreground"
                           >
-                            <span className="mt-2 size-1 shrink-0 rounded-full bg-amber-500" />
+                            <span className="mt-2 size-1 shrink-0 rounded-full bg-warning-bg0" />
                             {unknown}
                           </li>
                         ))}
@@ -470,7 +470,7 @@ export default function InvestigationView() {
                           <FileText size={14} className="mt-0.5 shrink-0" />
                           <span>
                             {s.name}
-                            <span className="mt-1 block text-[10px] leading-5 text-muted-foreground">
+                            <span className="mt-1 block text-[11px] leading-5 text-muted-foreground">
                               {s.locator}
                             </span>
                           </span>

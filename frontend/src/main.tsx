@@ -17,7 +17,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: boolean 
         <p className="my-4">Refresh the page to load your saved work.</p>
         <button
           onClick={() => location.reload()}
-          className="rounded-lg bg-primary px-4 py-2 text-white"
+          className="rounded-lg bg-primary px-4 py-2 text-primary-foreground"
         >
           Reload workspace
         </button>

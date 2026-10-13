@@ -45,12 +45,13 @@ export default function Actions() {
           )
         })}
       </div>
-      <div className="mb-6 flex flex-wrap gap-2" aria-label="Filter actions">
+      <div className="filter-bar mb-6 flex flex-wrap gap-2" aria-label="Filter actions">
         {['all', 'pending', 'monitoring', 'succeeded', 'failed', 'rejected'].map((value) => (
           <Button
             size="sm"
             key={value}
             variant={filter === value ? 'secondary' : 'ghost'}
+            aria-pressed={filter === value}
             className="capitalize"
             onClick={() => setFilter(value)}
           >

@@ -135,12 +135,12 @@ export default function Workspace() {
                       <td>
                         <span className="font-medium">{event.event.replaceAll('.', ' · ')}</span>
                       </td>
-                      <td className="font-mono text-[10px]">{event.actor.slice(0, 8)}</td>
+                      <td className="font-mono text-[11px]">{event.actor.slice(0, 8)}</td>
                       <td>{dateTime(event.created_at)}</td>
                       <td>
                         <details>
                           <summary className="cursor-pointer text-primary">Inspect</summary>
-                          <pre className="mt-2 max-w-sm overflow-auto rounded-lg bg-muted p-3 text-[10px]">
+                          <pre className="mt-2 max-w-sm overflow-auto rounded-lg bg-muted p-3 text-[11px]">
                             {JSON.stringify(event.details, null, 2)}
                           </pre>
                         </details>

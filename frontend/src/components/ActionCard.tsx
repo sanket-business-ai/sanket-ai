@@ -30,7 +30,7 @@ export function ActionCard({ action }: { action: Action }) {
     client.invalidateQueries({ queryKey: ['dashboard'] })
   }
   return (
-    <Card className="p-6">
+    <Card className="action-card p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <ShieldCheck size={15} />
@@ -39,21 +39,21 @@ export function ActionCard({ action }: { action: Action }) {
         <Status value={action.status} />
       </div>
       <h3 className="mt-4 text-base font-semibold leading-7">{action.title}</h3>
-      <div className="mt-5 grid grid-cols-3 gap-3 rounded-lg bg-muted/70 p-4 text-xs">
+      <div className="mt-5 grid grid-cols-1 gap-4 rounded-lg bg-muted/70 p-4 text-xs sm:grid-cols-3">
         <div>
-          <p className="text-[10px] text-muted-foreground">MONITORED KPI</p>
+          <p className="text-[11px] text-muted-foreground">MONITORED KPI</p>
           <p className="mt-2 font-medium">
             {action.metric === 'late_rate' ? 'Late delivery rate' : 'Recognized revenue'}
           </p>
         </div>
         <div>
-          <p className="text-[10px] text-muted-foreground">BASELINE</p>
+          <p className="text-[11px] text-muted-foreground">BASELINE</p>
           <p className="mt-2 font-medium">
             <MetricValue value={action.baseline} metric={action.metric} />
           </p>
         </div>
         <div>
-          <p className="text-[10px] text-muted-foreground">TARGET</p>
+          <p className="text-[11px] text-muted-foreground">TARGET</p>
           <p className="mt-2 font-medium">
             {action.direction === 'up' ? '≥ ' : '≤ '}
             <MetricValue value={action.target} metric={action.metric} />

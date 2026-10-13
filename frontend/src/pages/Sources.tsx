@@ -202,7 +202,7 @@ export default function Sources() {
                       <td>
                         <div className="flex items-center gap-3">
                           <span
-                            className={`rounded-lg p-2 ${item.kind === 'document' ? 'bg-amber-50 text-amber-700' : 'bg-primary/5 text-primary'}`}
+                            className={`rounded-lg p-2 ${item.kind === 'document' ? 'bg-warning-bg text-warning' : 'bg-primary/5 text-primary'}`}
                           >
                             {item.kind === 'document' ? (
                               <FileText size={17} />
@@ -212,7 +212,7 @@ export default function Sources() {
                           </span>
                           <div>
                             <p className="font-medium">{item.name}</p>
-                            <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+                            <p className="mt-1 font-mono text-[11px] text-muted-foreground">
                               {item.id.slice(0, 8)}
                             </p>
                           </div>
@@ -361,14 +361,14 @@ export default function Sources() {
                     {Object.keys(contracts.data?.[kind] || {}).map((key) => (
                       <span
                         key={key}
-                        className="rounded-md border bg-background px-2 py-1 font-mono text-[10px]"
+                        className="rounded-md border bg-background px-2 py-1 font-mono text-[11px]"
                       >
                         {key}
                       </span>
                     ))}
                   </div>
                 )}
-                <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+                <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
                   Use values in Excel cells, without formulas. Dates must be ISO text. Extra columns
                   are ignored. Orders use delivered, completed, cancelled, returned, pending, or
                   shipped status.

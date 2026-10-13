@@ -16,3 +16,6 @@ playwright-report/
 test-results/
 *.tsbuildinfo
 pytest-cache-files-*/
+
+# Local agent skills (logo-design etc.)
+.agents/

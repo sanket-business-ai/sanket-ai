@@ -1,11 +1,10 @@
-import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
   Activity,
   ArrowUpRight,
   Bell,
-  ChevronDown,
   CircleHelp,
   Database,
   FileSearch,
@@ -14,10 +13,12 @@ import {
   Loader2,
   LogOut,
   Menu,
+  Moon,
   Plus,
   Settings2,
   ShieldCheck,
   Sparkles,
+  Sun,
 } from 'lucide-react'
 import { api, ApiError, post, setCsrf } from './lib/api'
 import type { System, User } from './lib/types'
@@ -38,7 +39,13 @@ const navigation = [
   { to: '/actions', label: 'Actions & monitoring', icon: ListChecks },
 ]
 
-function Login({ onLogin }: { onLogin: (user: User) => void }) {
+function Login({
+  onLogin,
+  themeControl,
+}: {
+  onLogin: (user: User) => void
+  themeControl: ReactNode
+}) {
   const [email, setEmail] = useState('founder@sanketai.local')
   const [password, setPassword] = useState('')
   const mutation = useMutation({
@@ -54,29 +61,33 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
       <section className="login-story">
         <Brand />
         <div>
-          <span className="eyebrow text-lime-200/70">YOUR BUSINESS HAS A STORY</span>
+          <span className="eyebrow text-mint">LESS GUESSWORK. MORE CLARITY.</span>
           <h1>
             Follow the signals.
             <br />
             <span>Find the reason.</span>
           </h1>
           <p>An autonomous investigator for the questions your dashboard can’t answer.</p>
-          <div className="mt-10 flex flex-wrap gap-3 text-xs text-white/65">
-            <span>Evidence-backed</span>
-            <span>·</span>
-            <span>Locally powered</span>
-            <span>·</span>
-            <span>Human approved</span>
+          <div className="login-proof">
+            <div>
+              <FileSearch size={20} />
+              <p>Trace every insight</p>
+            </div>
+            <div>
+              <Activity size={20} />
+              <p>Connect the signals</p>
+            </div>
+            <div>
+              <ShieldCheck size={20} />
+              <p>Stay in control</p>
+            </div>
           </div>
         </div>
-        <p className="text-xs text-white/40">Built for businesses moving Nepal forward.</p>
+        <p className="text-xs text-white/65">Built for businesses moving Nepal forward.</p>
       </section>
-      <section className="flex items-center justify-center p-8">
+      <section className="login-panel relative">
+        <div className="absolute right-5 top-5">{themeControl}</div>
         <div className="w-full max-w-sm">
-          <div className="mb-7 inline-flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <ShieldCheck size={25} />
-          </div>
-          <p className="eyebrow">YOUR INVESTIGATION WORKSPACE</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight">Welcome to SanketAI</h2>
           <p className="mb-8 mt-3 text-sm leading-6 text-muted-foreground">
             Sign in to connect the evidence and understand what’s happening in your business.
@@ -121,7 +132,7 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
   )
 }
 
-function Shell({ user }: { user: User }) {
+function Shell({ user, themeControl }: { user: User; themeControl: ReactNode }) {
   const client = useQueryClient()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -148,22 +159,21 @@ function Shell({ user }: { user: User }) {
     )?.label || 'Workspace'
   const sidebar = (
     <>
-      <Link to="/" aria-label="SanketAI home" className="px-6 pt-8 pb-7">
+      <Link to="/" aria-label="SanketAI home" className="px-6 pt-7 pb-7">
         <Brand />
       </Link>
       <div className="mx-4 mb-6 rounded-lg border border-white/10 bg-white/5 px-3 py-3">
         <div className="flex items-center gap-3">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-lime-200 text-xs font-bold text-[#17362e]">
-            WS
+          <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-xs font-bold text-accent-foreground">
+            <Database size={17} />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold text-white">My business workspace</p>
-            <p className="mt-1 text-[10px] text-white/40">Business intelligence</p>
+            <p className="mt-1 text-[11px] text-white/65">Business intelligence</p>
           </div>
-          <ChevronDown size={13} className="text-white/40" />
         </div>
       </div>
-      <p className="px-6 pb-3 text-[9px] font-semibold tracking-[1.8px] text-white/35">WORKSPACE</p>
+      <p className="px-6 pb-3 text-[9px] font-semibold tracking-[1.8px] text-white/65">WORKSPACE</p>
       <nav aria-label="Main navigation" className="space-y-1 px-3">
         {navigation.map((item) => (
           <NavLink
@@ -196,14 +206,14 @@ function Shell({ user }: { user: User }) {
       </div>
       <div className="mt-auto px-4 pb-4">
         <div className="agent-sidebar">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-lime-200/10 text-lime-200">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-mint/10 text-mint">
             <Activity size={16} />
           </span>
           <div>
             <p className="text-xs font-medium text-white/90">Investigation engine</p>
-            <p className="mt-1 flex items-center gap-1.5 text-[10px] text-white/50">
+            <p className="mt-1 flex items-center gap-1.5 text-[11px] text-white/65">
               <span
-                className={`size-1.5 rounded-full ${system.data?.worker_online ? 'bg-lime-300' : 'bg-amber-300'}`}
+                className={`size-1.5 rounded-full ${system.data?.worker_online ? 'bg-mint' : 'bg-warning-bg'}`}
               />
               {system.data?.worker_online ? 'Worker connected' : 'Worker not connected'}
             </p>
@@ -215,19 +225,19 @@ function Shell({ user }: { user: User }) {
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[11px] text-white/80">{user.email}</p>
-            <p className="mt-0.5 text-[10px] text-white/35">Workspace administrator</p>
+            <p className="mt-0.5 text-[11px] text-white/65">Workspace administrator</p>
           </div>
           <button
             aria-label="Sign out"
             onClick={() => logout.mutate()}
             disabled={logout.isPending}
-            className="rounded-md p-1.5 text-white/40 hover:text-white"
+            className="rounded-md p-1.5 text-white/65 hover:text-white"
           >
             <LogOut size={15} />
           </button>
         </div>
         {logout.error && (
-          <p role="alert" className="mt-2 text-xs text-red-200">
+          <p role="alert" className="mt-2 text-xs text-danger-bg">
             {logout.error.message}
           </p>
         )}
@@ -261,11 +271,12 @@ function Shell({ user }: { user: User }) {
             >
               <Menu />
             </Button>
-            <span className="text-xs text-muted-foreground">Workspace</span>
-            <span className="text-border">/</span>
+            <span className="hidden text-xs text-muted-foreground sm:inline">Workspace</span>
+            <span className="hidden text-muted-foreground sm:inline">/</span>
             <span className="text-xs font-medium">{active}</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
+            {themeControl}
             <span className="hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
               <span className="size-1.5 rounded-full bg-primary" />
               Private workspace
@@ -280,7 +291,7 @@ function Shell({ user }: { user: User }) {
             <span className="h-5 w-px bg-border" />
             <Link
               to="/investigations?new=1"
-              className="flex items-center gap-2 text-xs font-semibold text-primary"
+              className="flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary-hover"
             >
               <Plus size={15} />
               <span className="hidden sm:inline">New investigation</span>
@@ -358,6 +369,23 @@ function Shell({ user }: { user: User }) {
 }
 
 export default function App() {
+  const [dark, setDark] = useState(false)
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', dark ? '#08111F' : '#0B1424')
+  }, [dark])
+  const themeControl = (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label={dark ? 'Use light theme' : 'Use dark theme'}
+      onClick={() => setDark(!dark)}
+    >
+      {dark ? <Sun /> : <Moon />}
+    </Button>
+  )
   const client = useQueryClient()
   const session = useQuery({
     queryKey: ['session'],
@@ -393,11 +421,12 @@ export default function App() {
   if (!session.data)
     return (
       <Login
+        themeControl={themeControl}
         onLogin={(user) => {
           setCsrf(user.csrf_token)
           client.setQueryData(['session'], user)
         }}
       />
     )
-  return <Shell user={session.data} />
+  return <Shell user={session.data} themeControl={themeControl} />
 }

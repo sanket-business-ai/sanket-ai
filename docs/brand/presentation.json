@@ -1,0 +1,23 @@
+{
+  "brand": "Sanket AI",
+  "tagline": "Follow the evidence.",
+  "brief": "An evidence-led business investigator for Nepalese SMEs. The mark should feel clear, capable, calm and trustworthy in a working dashboard.",
+  "adjectives": ["clear", "capable", "calm", "trustworthy"],
+  "criteria": "An identifiable S, readable at 16 px, one-color geometry, strong on navy and light surfaces, with Figtree typography.",
+  "industry": "saas",
+  "brand_color": "#007F73",
+  "tile_color": "#0B1424",
+  "greyscale": false,
+  "final": true,
+  "concepts": [{
+    "name": "Signal S",
+    "symbol": "../../frontend/public/logo.svg",
+    "lockup": "../../frontend/public/logo-horizontal.svg",
+    "symbol_on_tile": "exports/sanket-symbol-mono-b7f078.svg",
+    "lockup_on_dark": "exports/sanket-horizontal-white.svg",
+    "idea": "Two evidence paths resolve into one S.",
+    "rationale": ["Opposing curves create a compact initial with a continuous flow.", "Wide internal spaces survive small interface sizes.", "Teal identifies actions; lime carries the mark on navy."]
+  }],
+  "recommendation": "Signal S was selected by the user and refined after monochrome and small-size review.",
+  "next_steps": ["Use the supplied SVG masters and local Figtree font.", "Keep clear space and minimum sizes from the usage guide."]
+}

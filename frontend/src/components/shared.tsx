@@ -16,17 +16,16 @@ import type { Metric } from '@/lib/types'
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <span className="inline-flex items-center gap-2.5">
-      <span className="brand-mark" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-        <i />
-      </span>
+    <span className="brand" aria-label="Sanket AI">
+      <svg className="brand-mark" viewBox="0 0 256 256" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M224 24H100a76 76 0 0 0 0 152h28v-48h-28a28 28 0 0 1 0-56h124Z M32 232h124a76 76 0 0 0 0-152h-28v48h28a28 28 0 0 1 0 56H32Z"
+        />
+      </svg>
       {!compact && (
-        <span className="text-xl font-bold tracking-[-0.7px]">
-          Sanket<span className="font-normal opacity-70">AI</span>
-          <span className="ml-1 text-lime-300">.</span>
+        <span className="brand-wordmark">
+          sanket<span>AI</span>
         </span>
       )}
     </span>
@@ -47,7 +46,7 @@ export function ErrorState({ error, retry }: { error: Error; retry?: () => void 
   return (
     <div
       role="alert"
-      className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800"
+      className="rounded-xl border border-danger/20 bg-danger-bg p-5 text-sm text-danger"
     >
       <div className="flex items-center gap-2 font-semibold">
         <AlertCircle size={17} />
@@ -139,7 +138,7 @@ export function MetricCard({ metric }: { metric: Metric }) {
     <Card className="metric-card">
       <p className="text-xs font-medium text-muted-foreground">{metric.label}</p>
       <div className="mt-4 flex items-end justify-between gap-2">
-        <p className="text-[27px] font-semibold tracking-tight">
+        <p className="metric-number">
           {metric.unit === 'NPR' ? (
             <>
               <span className="mr-1.5 text-[11px] font-medium text-muted-foreground">NPR</span>
@@ -152,17 +151,17 @@ export function MetricCard({ metric }: { metric: Metric }) {
         <div
           className={cn(
             'rounded-md p-2',
-            metric.anomaly ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600',
+            metric.anomaly ? 'bg-warning-bg text-warning' : 'bg-secondary text-primary',
           )}
         >
           <Arrow size={19} />
         </div>
       </div>
-      <p className="mt-4 flex items-center gap-2 text-[11px]">
+      <p className="metric-comparison">
         <span
           className={cn(
             'inline-flex items-center gap-0.5 font-semibold',
-            good ? 'text-emerald-700' : 'text-rose-600',
+            good ? 'text-success' : 'text-danger',
           )}
         >
           {metric.change === null ? (

@@ -69,7 +69,7 @@ export function SourcePreview({
           <div className="max-h-[55vh] space-y-4 overflow-auto">
             {query.data?.chunks?.map((chunk) => (
               <div key={chunk.chunk} className="rounded-xl border p-4">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-primary">
                   Page {chunk.page} · Chunk {chunk.chunk}
                 </p>
                 <p className="whitespace-pre-wrap text-sm leading-7">{chunk.text}</p>

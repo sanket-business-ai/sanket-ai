@@ -20,7 +20,15 @@ import type { Dashboard, Investigation, System } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Empty, ErrorState, Loading, MetricCard, PageHeading, Status } from '@/components/shared'
+import {
+  Brand,
+  Empty,
+  ErrorState,
+  Loading,
+  MetricCard,
+  PageHeading,
+  Status,
+} from '@/components/shared'
 import { currency, dateTime } from '@/lib/utils'
 
 const suggestions = ['Why did sales drop?', 'Why are deliveries late?', 'Find what is going wrong']
@@ -64,7 +72,7 @@ export default function Overview() {
         title="Your business, understood."
         description="See the signals. Ask the questions. Get to the root cause."
         action={
-          <Badge variant="outline" className="bg-white py-2">
+          <Badge variant="outline" className="bg-card py-2.5 px-3">
             <span className="size-1.5 rounded-full bg-primary" />
             {data.period
               ? `${data.period.current_start} — ${data.period.current_end}`
@@ -74,9 +82,9 @@ export default function Overview() {
       />
       <section className="investigate-hero">
         <div className="hero-copy">
-          <Badge className="mb-5 border-white/15 bg-white/10 text-lime-200">
+          <Badge className="mb-5 border-mint/20 bg-mint/10 text-mint">
             <Sparkles size={12} />
-            YOUR AUTONOMOUS BUSINESS INVESTIGATOR
+            FROM SIGNAL TO ANSWER
           </Badge>
           <h2>
             Something changed.
@@ -96,7 +104,7 @@ export default function Overview() {
             <span>Business data</span>
           </div>
           <div className="signal-core">
-            <Search size={36} />
+            <Brand compact />
           </div>
           <div className="signal-node signal-bottom">
             <ShieldCheck size={18} />
@@ -121,6 +129,7 @@ export default function Overview() {
             required
           />
           <Button
+            variant="accent"
             type="submit"
             disabled={create.isPending || !data.source_count || question.trim().length < 8}
           >
@@ -203,7 +212,7 @@ export default function Overview() {
             ))}
           </section>
           {data.coverage_issues.length > 0 && (
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+            <div className="mt-4 rounded-lg border border-warning/20 bg-warning-bg px-4 py-3 text-xs leading-5 text-warning">
               Data coverage: {data.coverage_issues.join(' ')}{' '}
               <Link to="/sources" className="font-semibold underline">
                 Review sources
@@ -214,7 +223,7 @@ export default function Overview() {
             <Card>
               <CardHeader className="flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
-                  <span className="rounded-md bg-amber-50 p-1.5 text-amber-600">
+                  <span className="rounded-md bg-warning-bg p-1.5 text-warning">
                     <Lightbulb size={16} />
                   </span>
                   Signals worth investigating
@@ -303,7 +312,7 @@ export default function Overview() {
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-xs font-medium">{job.question}</p>
-                          <p className="mt-2 text-[10px] text-muted-foreground">
+                          <p className="mt-2 text-[11px] text-muted-foreground">
                             {dateTime(job.created_at)}
                           </p>
                         </div>
