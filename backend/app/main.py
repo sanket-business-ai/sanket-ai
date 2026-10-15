@@ -4,7 +4,7 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete, func, select, text, update
@@ -31,9 +31,10 @@ from .db import (
     get_db,
     now,
 )
-from .demo import seed_demo
+from .demo import margin_demo_pack, seed_demo
 from .ingestion import CONTRACTS, active_sources, store_source
 from .jobs import enqueue
+from .retrieval import search as retrieve_documents
 from .schemas import Decision, InvestigationRequest, Login
 
 logger = logging.getLogger(__name__)
@@ -196,6 +197,36 @@ def sources(db: Session = Depends(get_db), user: User = Depends(current_user)):
     ]
 
 
+@app.post("/api/sources/search")
+def search_source_documents(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    query = payload.get("query")
+    if not isinstance(query, str) or not query.strip() or len(query) > 500:
+        raise HTTPException(422, "Query must contain 1 to 500 characters")
+
+    documents = list(
+        db.scalars(select(Source).where(Source.kind == "document").order_by(Source.created_at.desc(), Source.id.desc()))
+    )
+    retrieval = retrieve_documents(documents, query.strip())
+    return {
+        "method": retrieval["method"],
+        "results": [
+            {
+                "source_id": result["source"].id,
+                "source_name": result["source"].name,
+                "page": result["chunk"]["page"],
+                "chunk": result["chunk"]["chunk"],
+                "text": result["text"],
+                "score": result["score"],
+            }
+            for result in retrieval["results"]
+        ],
+    }
+
+
 @app.get("/api/sources/contracts")
 def contracts(user: User = Depends(current_user)):
     return CONTRACTS
@@ -252,15 +283,47 @@ async def upload(
 
 
 @app.post("/api/demo", status_code=201)
-def demo(db: Session = Depends(get_db), user: User = Depends(current_user)):
+@app.post("/api/demo", status_code=201)
+def demo(
+    payload: dict | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     if not settings().demo_enabled:
         raise HTTPException(404, "Demo loading is disabled")
+
     if db.scalar(select(Source).limit(1)):
         raise HTTPException(409, "Demo data can only be loaded into an empty workspace")
-    seeded = seed_demo(db)
-    db.add(Audit(actor=user.id, event="demo.loaded", entity_id=user.id, details={"sources": len(seeded)}))
+
+    scenario = (payload or {}).get("scenario", "supply")
+
+    if scenario not in ("supply", "margin"):
+        raise HTTPException(422, "Scenario must be 'supply' or 'margin'")
+
+    if scenario == "margin":
+        from .ingestion import store_source
+        from .demo import margin_demo_pack
+
+        seeded = [store_source(db, data, name, kind)[0] for kind, name, data in margin_demo_pack()]
+    else:
+        seeded = seed_demo(db)
+
+    db.add(
+        Audit(
+            actor=user.id,
+            event="demo.loaded",
+            entity_id=user.id,
+            details={"sources": len(seeded), "scenario": scenario},
+        )
+    )
     db.commit()
-    return {"sources": len(seeded), "company": "HimalayanMart", "synthetic": True}
+
+    return {
+        "sources": len(seeded),
+        "company": "HimalayanMart",
+        "synthetic": True,
+        "scenario": scenario,
+    }
 
 
 @app.get("/api/dashboard")

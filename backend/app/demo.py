@@ -114,5 +114,51 @@ def demo_pack():
     return files
 
 
+
+def margin_demo_pack():
+    """Synthetic documents explaining rising revenue but falling contribution."""
+    return [
+        (
+            "document",
+            "courier_rate_notice.md",
+            (
+                "# Courier Rate Notice - October 2026\n"
+                "HimalayanMart's courier partner has increased delivery rates "
+                "by 25% effective 1 October 2026. The revised rates apply to "
+                "all standard deliveries, with additional charges for remote "
+                "locations. These higher delivery expenses reduce contribution "
+                "per order. This is synthetic demo data."
+            ).encode(),
+        ),
+        (
+            "document",
+            "supplier_price_letter.md",
+            (
+                "# Supplier Price Revision - October 2026\n"
+                "Valley Electronics has increased wholesale prices for "
+                "wireless earbuds by 12% effective 1 October 2026. Retail "
+                "prices have not changed, so the higher purchase cost reduces "
+                "the contribution earned on each unit sold. This is synthetic "
+                "demo data."
+            ).encode(),
+        ),
+        (
+            "document",
+            "finance_margin_note.md",
+            (
+                "# Finance Note - October 2026\n"
+                "HimalayanMart's revenue increased by approximately 10% "
+                "compared with the previous period, but contribution fell. "
+                "The main factors identified for this synthetic scenario are "
+                "higher courier expenses and increased supplier prices. "
+                "Management should review delivery costs and product-level "
+                "contribution before changing retail prices. This is synthetic "
+                "demo data, not audited financial information."
+            ).encode(),
+        ),
+    ]
+
+
+
 def seed_demo(db):
     return [store_source(db, data, name, kind)[0] for kind, name, data in demo_pack()]

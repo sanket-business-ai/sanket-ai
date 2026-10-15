@@ -1,9 +1,10 @@
 """Read-only tools. Money is calculated with Decimal, never by the language model."""
 
-import re
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
+
+from .retrieval import search as retrieve_documents
 
 PAID = {"delivered", "completed"}
 
@@ -338,19 +339,14 @@ class Tools:
         return result
 
     def search_documents(self, query=""):
-        # shortcut: lexical retrieval misses semantic matches; add embeddings when the evidence corpus grows.
-        tokens = set(re.findall(r"\w{3,}", query.lower())) - {"the", "and", "why", "our", "this", "what"}
-        scored = []
-        for source in self.sources:
-            if source.kind != "document":
-                continue
-            for chunk in source.content["chunks"]:
-                words = set(re.findall(r"\w{3,}", chunk["text"].lower()))
-                score = len(tokens & words)
-                if score:
-                    scored.append((score, source, chunk))
+        retrieval = retrieve_documents(
+            [source for source in self.sources if source.kind == "document"],
+            query,
+        )
         result = []
-        for score, source, chunk in sorted(scored, key=lambda item: (-item[0], item[1].name, item[2]["chunk"]))[:5]:
+        for match in retrieval["results"]:
+            source = match["source"]
+            chunk = match["chunk"]
             eid = f"E{len(self.evidence) + 1}"
             self.evidence.append(
                 {
@@ -375,12 +371,12 @@ class Tools:
                     "source": source.name,
                     "excerpt": chunk["text"],
                     "page": chunk["page"],
-                    "score": score,
+                    "score": match["score"],
                 }
             )
         return {
             "matches": result,
-            "method": "lexical keyword retrieval",
+            "method": retrieval["method"],
             "limitation": "Document statements are attributed claims, not independently verified facts.",
         }
 

@@ -12,8 +12,15 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
+from app import ingestion, retrieval
 from app import main
 from app.db import get_db, make_engine, uid
+
+
+@pytest.fixture(autouse=True)
+def disable_external_embeddings(monkeypatch):
+    monkeypatch.setattr(ingestion, "embed_text", lambda _: None)
+    monkeypatch.setattr(retrieval, "_embed_query", lambda _: None)
 
 
 @pytest.fixture
@@ -44,5 +51,7 @@ def workspace(monkeypatch):
 @pytest.fixture
 def seeded(workspace):
     client, factory = workspace
-    assert client.post("/api/demo").status_code == 201
+    response = client.post("/api/demo")
+    assert response.status_code == 201
+    assert response.json()["scenario"] == "supply"
     return client, factory

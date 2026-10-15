@@ -7,6 +7,7 @@ import zipfile
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import PurePath
+import httpx
 
 from defusedxml import ElementTree
 from pypdf import PdfReader
@@ -14,6 +15,31 @@ from sqlalchemy import select
 
 from .config import settings
 from .db import Source
+
+
+
+def embed_text(text: str) -> list[float] | None:
+    """Return a local Ollama embedding, or None if unavailable."""
+    try:
+        with httpx.Client(timeout=10, trust_env=False) as client:
+            response = client.post(
+                settings().ollama_url.rstrip("/") + "/api/embed",
+                json={
+                    "model": "bge-m3",
+                    "input": text,
+                },
+            )
+            response.raise_for_status()
+            embeddings = response.json().get("embeddings", [])
+
+            if embeddings and embeddings[0]:
+                return embeddings[0]
+
+    except (httpx.HTTPError, ValueError, KeyError, IndexError):
+        pass
+
+    return None
+
 
 CONTRACTS = {
     "orders": {
@@ -180,7 +206,15 @@ def parse_upload(data, filename, kind):
         for page, text in pages:
             text = text.replace("\x00", "").strip()
             for start in range(0, len(text), 1000):
-                chunks.append({"page": page, "chunk": len(chunks) + 1, "text": text[start : start + 1200]})
+                chunk_text = text[start:start + 1200]
+
+                chunks.append({
+    "page": page,
+    "chunk": len(chunks) + 1,
+    "text": chunk_text,
+    "embedding": embed_text(chunk_text),
+})
+
         if not chunks:
             raise ValueError("No readable text found. Scanned PDFs require OCR first.")
         if len(chunks) > 500:
