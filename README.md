@@ -4,7 +4,7 @@ An autonomous AI business investigator for Nepalese SMEs: follow the evidence fr
 
 This monorepo implements the original proposal's investigation flow with **React + Vite + TypeScript + shadcn/ui + Tailwind CSS**, **FastAPI**, a durable Python worker, **PostgreSQL/SQLite**, and optional **Ollama/Qwen3** reasoning.
 
-Included: a dashboard; question and discovery investigations; a live tool trail; competing hypotheses and counter-evidence; source-backed reports; “Challenge this conclusion”; JSON exports; validated CSV/XLSX/PDF/text ingestion; approval-gated internal tasks; scheduled KPI checks; automatic re-investigation when a target is missed; authenticated sessions; and audit history. A synthetic HimalayanMart pack contains eight datasets and four reports.
+Included: a dashboard; question and discovery investigations; a live tool trail; competing hypotheses and counter-evidence; source-backed reports; “Challenge this conclusion”; JSON exports; validated CSV/XLSX/PDF/text ingestion; approval-gated internal tasks; scheduled KPI checks; automatic re-investigation when a target is missed; authenticated sessions; and audit history. Two synthetic HimalayanMart packs are included: a supply pack (eight datasets, four reports) and a margin pack (nine datasets, three documents).
 
 ## Run with Docker
 
@@ -17,7 +17,7 @@ docker compose up --build -d
 
 Open **http://localhost:5173**. The initial email is `founder@sanketai.local`; the generated password is `SANKET_ADMIN_PASSWORD` in your local `.env`. The setup script preserves an existing file. Change the email/password before the first startup if desired. No default production password is supplied.
 
-Sign in and select **Load demo evidence**, then ask “Why did our sales drop?” or select **Find what is going wrong**. The demo is explicitly synthetic. Actions propose internal tasks; they do not modify a real CRM or notify a team.
+Sign in and select **Load demo evidence**, then ask “Why did our sales drop?” or select **Find what is going wrong**. Alternatively, select **Load margin demo** and ask “Revenue increased, so why is our margin falling?”. Each pack loads only into an empty workspace. The demos are explicitly synthetic; the couriers and suppliers are fictional. Actions propose internal tasks; they do not modify a real CRM or notify a team.
 
 Use an existing host Ollama installation:
 
@@ -91,12 +91,13 @@ Upload complete datasets, with matching IDs across files and ISO dates such as `
 | products | id, name, category, price, cost |
 | inventory | date, product_id, supplier_id, stock |
 | suppliers | id, name, product_id, promised_date, received_date |
-| deliveries | order_id, promised_date, delivered_date, route |
+| deliveries | order_id, promised_date, delivered_date, route; optional: courier, fee |
 | marketing | date, channel, spend, impressions, clicks |
 | customers | id, segment, location, signup_date |
 | expenses | date, category, amount |
+| purchases | date, supplier_id, product_id, quantity, unit_cost |
 
-`received_date` and `delivered_date` may be blank for pending shipments. XLSX reads the first worksheet; dates must be ISO text and formulas must be exported as values. Documents support text PDFs, TXT, and Markdown. Scanned PDFs need OCR before uploading. Limits: 10 MB/file, 50,000 dataset rows, 100 PDF pages, and 500 document chunks. Extra table columns are ignored.
+`received_date` and `delivered_date` may be blank for pending shipments. The `courier` and `fee` delivery columns may be omitted entirely or left blank; record courier fees there, and stock purchases in `purchases`, but not again in `expenses`, or the contribution estimate counts them twice. Cost of goods uses the latest purchase `unit_cost` on or before each sale and falls back to the current catalog `cost` when no purchase exists. XLSX reads the first worksheet; dates must be ISO text and formulas must be exported as values. Documents support text PDFs, TXT, and Markdown. Scanned PDFs need OCR before uploading. Limits: 10 MB/file, 50,000 dataset rows, 100 PDF pages, and 500 document chunks. Extra table columns are ignored.
 
 New investigations use the newest upload for each table type; older source versions remain attached to existing reports. Documents accumulate as evidence. Do not mix demo files with real datasets. Demo loading is available only in an empty workspace and can be disabled with `SANKET_DEMO_ENABLED=false`.
 
@@ -134,6 +135,6 @@ cd backend
 
 This revokes existing sessions. Changing the bootstrap environment password alone does not change an existing account.
 
-Current boundaries: document retrieval is lexical; model reasoning is observational and can be wrong; confidence is qualitative, not a probability; the deterministic explanation focuses on supply/inventory/revenue and leaves unsupported domains inconclusive. Revenue difference is not automatically attributable loss. External CRM/email/workflow connectors, vector search, a separate MCP server, OCR, public signup, and multi-tenant access are deferred. Scheduled outcome checks need a complete newer 28-day window and do not prove action causality.
+Current boundaries: document retrieval is lexical; model reasoning is observational and can be wrong; confidence is qualitative, not a probability; the deterministic explanation covers two scenarios (supplier delay → stockout → revenue, and courier/supplier price rises → contribution) and leaves other domains inconclusive. Revenue difference is not automatically attributable loss. External CRM/email/workflow connectors, vector search, a separate MCP server, OCR, public signup, and multi-tenant access are deferred. Scheduled outcome checks need a complete newer 28-day window and do not prove action causality.
 
 See [architecture and tradeoffs](docs/architecture.md) and the downloaded [Vercel React skill](docs/skills/vercel-react-best-practices/SKILL.md). The Vercel skill was sourced from the official repository through the [skills.sh listing](https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices); two relevant rule files are included under `docs/skills/`.

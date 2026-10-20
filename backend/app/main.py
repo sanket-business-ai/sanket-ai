@@ -32,9 +32,9 @@ from .db import (
     now,
 )
 from .demo import seed_demo
-from .ingestion import CONTRACTS, active_sources, store_source
+from .ingestion import CONTRACTS, OPTIONAL_COLUMNS, active_sources, store_source
 from .jobs import enqueue
-from .schemas import Decision, InvestigationRequest, Login
+from .schemas import Decision, DemoRequest, InvestigationRequest, Login
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +198,10 @@ def sources(db: Session = Depends(get_db), user: User = Depends(current_user)):
 
 @app.get("/api/sources/contracts")
 def contracts(user: User = Depends(current_user)):
-    return CONTRACTS
+    return {
+        kind: {"required": list(columns), "optional": list(OPTIONAL_COLUMNS.get(kind, {}))}
+        for kind, columns in CONTRACTS.items()
+    }
 
 
 @app.get("/api/sources/{source_id}")
@@ -252,15 +255,24 @@ async def upload(
 
 
 @app.post("/api/demo", status_code=201)
-def demo(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def demo(payload: DemoRequest | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    pack = payload.pack if payload else "supply"
     if not settings().demo_enabled:
         raise HTTPException(404, "Demo loading is disabled")
     if db.scalar(select(Source).limit(1)):
         raise HTTPException(409, "Demo data can only be loaded into an empty workspace")
-    seeded = seed_demo(db)
-    db.add(Audit(actor=user.id, event="demo.loaded", entity_id=user.id, details={"sources": len(seeded)}))
+    seeded = seed_demo(db, pack)
+    documents = sum(source.kind == "document" for source in seeded)
+    db.add(Audit(actor=user.id, event="demo.loaded", entity_id=user.id, details={"sources": len(seeded), "pack": pack}))
     db.commit()
-    return {"sources": len(seeded), "company": "HimalayanMart", "synthetic": True}
+    return {
+        "sources": len(seeded),
+        "datasets": len(seeded) - documents,
+        "documents": documents,
+        "pack": pack,
+        "company": "HimalayanMart",
+        "synthetic": True,
+    }
 
 
 @app.get("/api/dashboard")

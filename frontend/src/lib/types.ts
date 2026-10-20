@@ -75,6 +75,27 @@ export interface Hypothesis {
   contradicting_evidence: string[]
   explanation: string
 }
+export interface BridgeStep {
+  key: string
+  label: string
+  current: number
+  previous: number
+  change: number | null
+  effect: number
+  evidence_id: string
+}
+export interface MarginBridge {
+  available: boolean
+  current?: number
+  previous?: number
+  change?: number
+  change_percent?: number | null
+  margin_rate?: { current: number | null; previous: number | null }
+  steps?: BridgeStep[]
+  cost_basis?: string
+  missing?: string[]
+  limitation: string
+}
 export interface Report {
   root_cause: string
   causal_chain: string[]
@@ -88,6 +109,7 @@ export interface Report {
   period: Period
   impact: {
     observed_revenue_difference: number | null
+    observed_contribution_difference?: number | null
     currency: string
     label: string
     attributable_loss: number | null
@@ -98,6 +120,8 @@ export interface Report {
   challenged: boolean
   coverage_issues: string[]
   actionable: boolean
+  scenario?: 'supply' | 'margin'
+  margin_bridge?: MarginBridge | null
 }
 export interface Action {
   id: string
@@ -129,6 +153,14 @@ export interface InvestigationDetail extends Investigation {
   report: Report | null
   error: string | null
   actions: Action[]
+}
+export type Contracts = Record<string, { required: string[]; optional: string[] }>
+export type DemoPack = 'supply' | 'margin'
+export interface DemoResult {
+  sources: number
+  datasets: number
+  documents: number
+  pack: DemoPack
 }
 export interface Dashboard {
   metrics: Metric[]
