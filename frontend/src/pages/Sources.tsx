@@ -12,7 +12,7 @@ import {
   UploadCloud,
 } from 'lucide-react'
 import { api, post } from '@/lib/api'
-import type { Source, System } from '@/lib/types'
+import type { Contracts, DemoPack, DemoResult, Source, System } from '@/lib/types'
 import { dateTime, number } from '@/lib/utils'
 import { Empty, ErrorState, Loading, PageHeading } from '@/components/shared'
 import { SourcePreview } from '@/components/SourcePreview'
@@ -30,6 +30,7 @@ const kinds = [
   'marketing',
   'customers',
   'expenses',
+  'purchases',
   'document',
 ]
 export default function Sources() {
@@ -44,7 +45,7 @@ export default function Sources() {
   const query = useQuery({ queryKey: ['sources'], queryFn: () => api<Source[]>('/sources') })
   const contracts = useQuery({
     queryKey: ['contracts'],
-    queryFn: () => api<Record<string, Record<string, string>>>('/sources/contracts'),
+    queryFn: () => api<Contracts>('/sources/contracts'),
     staleTime: Infinity,
   })
   const system = useQuery({ queryKey: ['system'], queryFn: () => api<System>('/system') })
@@ -67,10 +68,12 @@ export default function Sources() {
     },
   })
   const demo = useMutation({
-    mutationFn: () => post('/demo'),
-    onSuccess: () => {
+    mutationFn: (pack: DemoPack) => post<DemoResult>('/demo', { pack }),
+    onSuccess: (data) => {
       refresh()
-      setSuccess('HimalayanMart synthetic evidence pack loaded: 8 datasets and 4 documents.')
+      setSuccess(
+        `HimalayanMart synthetic ${data.pack === 'margin' ? 'margin ' : ''}evidence pack loaded: ${data.datasets} datasets and ${data.documents} documents.`,
+      )
     },
   })
   function refresh() {
@@ -82,7 +85,8 @@ export default function Sources() {
     upload.mutate()
   }
   function template() {
-    const columns = Object.keys(contracts.data?.[kind] || {})
+    const contract = contracts.data?.[kind]
+    const columns = contract ? [...contract.required, ...contract.optional] : []
     const blob = new Blob([columns.join(',') + '\n'], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -161,10 +165,32 @@ export default function Sources() {
                 Upload your first file
               </Button>
               {system.data?.demo_enabled && (
-                <Button variant="outline" disabled={demo.isPending} onClick={() => demo.mutate()}>
-                  {demo.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}Load
-                  HimalayanMart demo
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={demo.isPending}
+                    onClick={() => demo.mutate('supply')}
+                  >
+                    {demo.isPending && demo.variables === 'supply' ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <Sparkles />
+                    )}
+                    Load HimalayanMart demo
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={demo.isPending}
+                    onClick={() => demo.mutate('margin')}
+                  >
+                    {demo.isPending && demo.variables === 'margin' ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <Sparkles />
+                    )}
+                    Load margin demo
+                  </Button>
+                </>
               )}
             </div>
           }
@@ -358,12 +384,20 @@ export default function Sources() {
                   <ErrorState error={contracts.error} />
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
-                    {Object.keys(contracts.data?.[kind] || {}).map((key) => (
+                    {contracts.data?.[kind]?.required.map((key) => (
                       <span
                         key={key}
                         className="rounded-md border bg-background px-2 py-1 font-mono text-[11px]"
                       >
                         {key}
+                      </span>
+                    ))}
+                    {contracts.data?.[kind]?.optional.map((key) => (
+                      <span
+                        key={key}
+                        className="rounded-md border border-dashed bg-background px-2 py-1 font-mono text-[11px] text-muted-foreground"
+                      >
+                        {key} (optional)
                       </span>
                     ))}
                   </div>

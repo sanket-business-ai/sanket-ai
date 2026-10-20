@@ -16,7 +16,7 @@ import {
   TrendingDown,
 } from 'lucide-react'
 import { api, post } from '@/lib/api'
-import type { Dashboard, Investigation, System } from '@/lib/types'
+import type { Dashboard, DemoPack, Investigation, System } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,7 +31,13 @@ import {
 } from '@/components/shared'
 import { currency, dateTime } from '@/lib/utils'
 
-const suggestions = ['Why did sales drop?', 'Why are deliveries late?', 'Find what is going wrong']
+const discover = 'Find what is going wrong'
+const suggestions = [
+  'Why did sales drop?',
+  'Why is our margin falling?',
+  'Why are deliveries late?',
+  discover,
+]
 export default function Overview() {
   const navigate = useNavigate()
   const client = useQueryClient()
@@ -50,7 +56,7 @@ export default function Overview() {
     },
   })
   const demo = useMutation({
-    mutationFn: () => post('/demo'),
+    mutationFn: (pack: DemoPack) => post('/demo', { pack }),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ['dashboard'] })
       client.invalidateQueries({ queryKey: ['sources'] })
@@ -140,12 +146,12 @@ export default function Overview() {
         </form>
         <div className="suggestion-row">
           <span>Try asking</span>
-          {suggestions.map((text, index) => (
+          {suggestions.map((text) => (
             <button
               key={text}
               disabled={!data.source_count || create.isPending}
               onClick={() =>
-                index === 2
+                text === discover
                   ? create.mutate({
                       question: 'Find what is going wrong with our business.',
                       mode: 'discover',
@@ -178,10 +184,32 @@ export default function Overview() {
                   </Link>
                 </Button>
                 {system.data?.demo_enabled && (
-                  <Button variant="outline" disabled={demo.isPending} onClick={() => demo.mutate()}>
-                    {demo.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}Load demo
-                    evidence
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      disabled={demo.isPending}
+                      onClick={() => demo.mutate('supply')}
+                    >
+                      {demo.isPending && demo.variables === 'supply' ? (
+                        <Loader2 className="animate-spin" />
+                      ) : (
+                        <Sparkles />
+                      )}
+                      Load demo evidence
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={demo.isPending}
+                      onClick={() => demo.mutate('margin')}
+                    >
+                      {demo.isPending && demo.variables === 'margin' ? (
+                        <Loader2 className="animate-spin" />
+                      ) : (
+                        <Sparkles />
+                      )}
+                      Load margin demo
+                    </Button>
+                  </>
                 )}
               </div>
             }

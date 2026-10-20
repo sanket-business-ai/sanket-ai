@@ -306,12 +306,34 @@ export default function InvestigationView() {
                       <CardTitle>Business impact</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-semibold tracking-tight">
-                        {report.impact.observed_revenue_difference === null
-                          ? 'Insufficient baseline'
-                          : currency(report.impact.observed_revenue_difference)}
-                      </p>
-                      <p className="mt-2 text-xs text-muted-foreground">{report.impact.label}</p>
+                      {report.scenario === 'margin' &&
+                      report.impact.observed_contribution_difference != null ? (
+                        <>
+                          <p className="text-3xl font-semibold tracking-tight">
+                            {currency(report.impact.observed_contribution_difference)}
+                          </p>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Observed contribution difference, from recorded costs
+                          </p>
+                          {report.impact.observed_revenue_difference !== null && (
+                            <p className="mt-3 text-xs text-muted-foreground">
+                              Revenue difference:{' '}
+                              {currency(report.impact.observed_revenue_difference)}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-3xl font-semibold tracking-tight">
+                            {report.impact.observed_revenue_difference === null
+                              ? 'Insufficient baseline'
+                              : currency(report.impact.observed_revenue_difference)}
+                          </p>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {report.impact.label}
+                          </p>
+                        </>
+                      )}
                       <p className="mt-4 text-xs leading-6 text-muted-foreground">
                         Current: {report.period.current_start} — {report.period.current_end}
                         <br />

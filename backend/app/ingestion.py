@@ -38,7 +38,16 @@ CONTRACTS = {
     "marketing": {"date": "date", "channel": "text", "spend": "money", "impressions": "integer", "clicks": "integer"},
     "customers": {"id": "id", "segment": "text", "location": "text", "signup_date": "date"},
     "expenses": {"date": "date", "category": "text", "amount": "money"},
+    "purchases": {
+        "date": "date",
+        "supplier_id": "id",
+        "product_id": "id",
+        "quantity": "positive_integer",
+        "unit_cost": "money",
+    },
 }
+# Columns that may be left out of the header entirely; blank values are stored as null.
+OPTIONAL_COLUMNS = {"deliveries": {"courier": "optional_text", "fee": "optional_money"}}
 STATUSES = {"delivered", "completed", "cancelled", "returned", "pending", "shipped"}
 
 
@@ -97,12 +106,13 @@ def xlsx_rows(data):
 
 
 def validate_rows(rows, kind):
-    contract = CONTRACTS[kind]
     if not rows:
         raise ValueError("Dataset is empty")
     if len(rows) > settings().max_rows:
         raise ValueError(f"Maximum {settings().max_rows:,} rows per file")
-    missing = set(contract) - set(rows[0])
+    optional = {column: field for column, field in OPTIONAL_COLUMNS.get(kind, {}).items() if column in rows[0]}
+    contract = {**CONTRACTS[kind], **optional}
+    missing = set(CONTRACTS[kind]) - set(rows[0])
     if missing:
         raise ValueError("Missing required columns: " + ", ".join(sorted(missing)))
     normalized = []
@@ -112,14 +122,14 @@ def validate_rows(rows, kind):
         for column, field_type in contract.items():
             value = str(row.get(column, "") or "").strip()
             try:
-                if field_type == "optional_date" and not value:
+                if field_type.startswith("optional_") and not value:
                     result[column] = None
                     continue
                 if not value:
                     raise ValueError("value is required")
                 if "date" in field_type:
                     value = parse_date(value)
-                elif field_type in {"money", "integer", "positive_integer"}:
+                elif field_type in {"money", "optional_money", "integer", "positive_integer"}:
                     numeric = Decimal(value)
                     if (
                         not numeric.is_finite()

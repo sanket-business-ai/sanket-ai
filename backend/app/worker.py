@@ -82,7 +82,12 @@ def process_one(session_factory=SessionLocal):
                 return True
             job.report, job.status, job.completed_at = report, "completed", now()
             if report["actionable"]:
-                metric = next((m for m in report["metrics"] if m["key"] == "late_rate" and m["anomaly"]), None)
+                metric = None
+                if report.get("scenario") == "margin":
+                    metric = next((m for m in report["metrics"] if m["key"] == "contribution"), None)
+                metric = metric or next(
+                    (m for m in report["metrics"] if m["key"] == "late_rate" and m["anomaly"]), None
+                )
                 metric = metric or next(m for m in report["metrics"] if m["key"] == "revenue")
                 db.add(
                     Action(

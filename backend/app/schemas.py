@@ -25,6 +25,10 @@ class InvestigationRequest(StrictModel):
         return value
 
 
+class DemoRequest(StrictModel):
+    pack: Literal["supply", "margin"] = "supply"
+
+
 class Decision(StrictModel):
     decision: Literal["approve", "reject"]
 
@@ -45,6 +49,9 @@ class AgentStep(StrictModel):
         "get_deliveries",
         "get_customer_signals",
         "get_marketing",
+        "get_margin_bridge",
+        "get_delivery_costs",
+        "get_supplier_costs",
         "search_documents",
         "finish",
     ]
