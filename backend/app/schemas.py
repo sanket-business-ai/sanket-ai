@@ -29,6 +29,10 @@ class DemoRequest(StrictModel):
     pack: Literal["supply", "margin"] = "supply"
 
 
+class ResetRequest(StrictModel):
+    confirm: Literal["RESET"]
+
+
 class Decision(StrictModel):
     decision: Literal["approve", "reject"]
 

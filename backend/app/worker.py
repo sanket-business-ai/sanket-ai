@@ -61,7 +61,7 @@ def process_one(session_factory=SessionLocal):
     def emit(stage, message, data):
         with session_factory() as db:
             job = db.get(Investigation, job_id)
-            if job.lease_token != token or job.status != "running":
+            if job is None or job.lease_token != token or job.status != "running":
                 raise RuntimeError("Investigation lease lost")
             job.trail = job.trail + [
                 {
@@ -78,7 +78,7 @@ def process_one(session_factory=SessionLocal):
         report = investigate(sources, question, mode, emit, challenged)
         with session_factory() as db:
             job = db.get(Investigation, job_id)
-            if job.lease_token != token or job.status != "running":
+            if job is None or job.lease_token != token or job.status != "running":
                 return True
             job.report, job.status, job.completed_at = report, "completed", now()
             if report["actionable"]:
@@ -104,7 +104,7 @@ def process_one(session_factory=SessionLocal):
         logger.exception("Investigation %s failed", job_id)
         with session_factory() as db:
             job = db.get(Investigation, job_id)
-            if job.lease_token == token:
+            if job is not None and job.lease_token == token:
                 job.status = "failed"
                 job.error = "Investigation could not finish. Check model availability and worker logs, then retry."
                 job.completed_at = now()

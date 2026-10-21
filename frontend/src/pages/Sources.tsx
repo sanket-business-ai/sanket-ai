@@ -11,7 +11,7 @@ import {
   Sparkles,
   UploadCloud,
 } from 'lucide-react'
-import { api, post } from '@/lib/api'
+import { api, download, post } from '@/lib/api'
 import type { Contracts, DemoPack, DemoResult, Source, System } from '@/lib/types'
 import { dateTime, number } from '@/lib/utils'
 import { Empty, ErrorState, Loading, PageHeading } from '@/components/shared'
@@ -76,6 +76,8 @@ export default function Sources() {
       )
     },
   })
+  const save = useMutation({ mutationFn: (id: string) => download(`/sources/${id}/download`) })
+  const failure = demo.error ?? save.error
   function refresh() {
     client.invalidateQueries({ queryKey: ['sources'] })
     client.invalidateQueries({ queryKey: ['dashboard'] })
@@ -145,9 +147,9 @@ export default function Sources() {
           {success}
         </p>
       )}
-      {demo.error && (
+      {failure && (
         <div className="mb-5">
-          <ErrorState error={demo.error} />
+          <ErrorState error={failure} />
         </div>
       )}
       {query.isPending ? (
@@ -255,14 +257,34 @@ export default function Sources() {
                         </Badge>
                       </td>
                       <td>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setSource(item.id)}
-                          aria-label={`Inspect ${item.name}`}
-                        >
-                          Inspect
-                        </Button>
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={save.isPending && save.variables === item.id}
+                            onClick={() => save.mutate(item.id)}
+                            aria-label={`Download ${item.name}`}
+                            title={
+                              item.kind === 'document'
+                                ? 'Download extracted text'
+                                : 'Download as CSV'
+                            }
+                          >
+                            {save.isPending && save.variables === item.id ? (
+                              <Loader2 className="animate-spin" />
+                            ) : (
+                              <Download />
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setSource(item.id)}
+                            aria-label={`Inspect ${item.name}`}
+                          >
+                            Inspect
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}

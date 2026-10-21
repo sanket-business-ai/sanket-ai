@@ -1,8 +1,10 @@
 import csv
 import logging
+import re
 import secrets
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from pathlib import PurePath
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,9 +34,9 @@ from .db import (
     now,
 )
 from .demo import seed_demo
-from .ingestion import CONTRACTS, OPTIONAL_COLUMNS, active_sources, store_source
+from .ingestion import CONTRACTS, OPTIONAL_COLUMNS, active_sources, export_csv, export_text, store_source
 from .jobs import enqueue
-from .schemas import Decision, DemoRequest, InvestigationRequest, Login
+from .schemas import Decision, DemoRequest, InvestigationRequest, Login, ResetRequest
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +222,23 @@ def source_detail(source_id: str, offset: int = 0, db: Session = Depends(get_db)
     }
 
 
+@app.get("/api/sources/{source_id}/download")
+def download_source(source_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    source = db.get(Source, source_id)
+    if not source:
+        raise HTTPException(404, "Source not found")
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", PurePath(source.name).stem)[:120] or "source"
+    if source.kind == "document":
+        body, media, suffix = export_text(source.content["chunks"]), "text/plain", "txt"
+    else:
+        body, media, suffix = export_csv(source.kind, source.content["rows"]), "text/csv", "csv"
+    return Response(
+        body,
+        media_type=f"{media}; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{stem}.{suffix}"'},
+    )
+
+
 @app.post("/api/sources", status_code=201)
 async def upload(
     file: UploadFile = File(...),
@@ -274,6 +293,37 @@ def demo(payload: DemoRequest | None = None, db: Session = Depends(get_db), user
         "company": "HimalayanMart",
         "synthetic": True,
     }
+
+
+@app.post("/api/workspace/reset")
+def reset_workspace(payload: ResetRequest, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    # A testing aid: production rejects demo_enabled, so real business data cannot be wiped here.
+    if not settings().demo_enabled:
+        raise HTTPException(404, "Workspace reset is disabled")
+    live_lease = now() - timedelta(minutes=30)
+    busy = db.scalar(
+        select(func.count())
+        .select_from(Investigation)
+        .where(
+            (Investigation.status == "queued")
+            | ((Investigation.status == "running") & (Investigation.started_at > live_lease))
+        )
+    )
+    if busy:
+        raise HTTPException(409, "Wait for running investigations to finish before resetting the workspace")
+    removed = {
+        "sources": db.scalar(select(func.count()).select_from(Source)),
+        "investigations": db.scalar(select(func.count()).select_from(Investigation)),
+        "actions": db.scalar(select(func.count()).select_from(Action)),
+    }
+    # Reports, actions and their evidence go together, so no report outlives its sources.
+    db.execute(delete(Action))
+    db.execute(update(Investigation).values(parent_id=None))
+    db.execute(delete(Investigation))
+    db.execute(delete(Source))
+    db.add(Audit(actor=user.id, event="workspace.reset", entity_id=user.id, details=removed))
+    db.commit()
+    return removed
 
 
 @app.get("/api/dashboard")

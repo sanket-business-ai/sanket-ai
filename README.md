@@ -111,7 +111,9 @@ Upload complete datasets, with matching IDs across files and ISO dates such as `
 
 `received_date` and `delivered_date` may be blank for pending shipments. The `courier` and `fee` delivery columns may be omitted entirely or left blank; record courier fees there, and stock purchases in `purchases`, but not again in `expenses`, or the contribution estimate counts them twice. Cost of goods uses the latest purchase `unit_cost` on or before each sale and falls back to the current catalog `cost` when no purchase exists. XLSX reads the first worksheet; dates must be ISO text and formulas must be exported as values. Documents support text PDFs, TXT, and Markdown. Scanned PDFs need OCR before uploading. Limits: 10 MB/file, 50,000 dataset rows, 100 PDF pages, and 500 document chunks. Extra table columns are ignored.
 
-New investigations use the newest upload for each table type; older source versions remain attached to existing reports. Documents accumulate as evidence. Do not mix demo files with real datasets. Demo loading is available only in an empty workspace and can be disabled with `SANKET_DEMO_ENABLED=false`.
+New investigations use the newest upload for each table type; older source versions remain attached to existing reports. Documents accumulate as evidence. Sources cannot be edited or deleted one by one; to correct data, upload a complete corrected file. On the Sources page, the download button exports a dataset as CSV (the normalized snapshot SanketAI analyses) or a document as its extracted text; cells that spreadsheets would run as formulas are prefixed with an apostrophe.
+
+Do not mix demo files with real datasets. Demo loading is available only in an empty workspace and can be disabled with `SANKET_DEMO_ENABLED=false`. To switch demos, use **Reset workspace** on the Workspace & audit page: it deletes all sources, investigations and actions (the audit trail and sign-in are kept), requires typing RESET, waits for running investigations, and is unavailable whenever demo loading is disabled, so never in production.
 
 ## Checks
 
