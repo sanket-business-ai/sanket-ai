@@ -25,14 +25,7 @@ Use an existing host Ollama installation:
 ollama pull qwen3:8b
 ```
 
-Or run Ollama and pull the configured model inside Docker:
-
-```powershell
-docker compose -f compose.yaml -f compose.ollama.yaml up --build -d
-docker compose -f compose.yaml -f compose.ollama.yaml logs -f pull-model
-```
-
-The first model download needs several GB of disk and suitable RAM. Docker Ollama uses CPU by default. Set `SANKET_OLLAMA_MODEL` for your hardware; the model must support structured JSON responses. `auto` mode visibly falls back to deterministic analysis if the model is missing, offline, or invalid. Set `SANKET_AGENT_MODE=ollama` to require model reasoning, or `deterministic` for offline analysis. The optional Ollama image uses a floating tag; pin tested images to digests for deployment.
+The first model download needs several GB of disk and suitable RAM. Set `SANKET_OLLAMA_MODEL` for your hardware; the model must support structured JSON responses. `auto` mode visibly falls back to deterministic analysis if the model is missing, offline, or invalid. Set `SANKET_AGENT_MODE=ollama` to require model reasoning, or `deterministic` for offline analysis.
 
 To use a hosted OpenAI-compatible model instead of Ollama (for example Groq, Google Gemini or OpenRouter), set these in `.env` and restart the API and worker:
 
