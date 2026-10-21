@@ -659,12 +659,17 @@ class Tools:
                 "NPR",
                 f"Quantity-weighted unit_cost per window where supplier_id={item['supplier_id']} and product_id={item['product_id']}",
             )
-        for item in [row for row in prices if (row["change"] or 0) >= MATERIAL_CHANGE][:3]:
-            item["documents"] = self.search_documents(
-                f"{item['supplier_name']} {item['product_name']} supplier price cost invoice",
-                require=re.compile(re.escape(item["supplier_name"]), re.IGNORECASE),
+        # One document search per supplier: a price letter usually covers all of that supplier's products.
+        material = [row for row in prices if (row["change"] or 0) >= MATERIAL_CHANGE]
+        for supplier in list(dict.fromkeys(row["supplier_name"] for row in material))[:3]:
+            matches = self.search_documents(
+                f"{supplier} supplier price cost invoice",
+                require=re.compile(re.escape(supplier), re.IGNORECASE),
                 limit=3,
             )["matches"]
+            for row in material:
+                if row["supplier_name"] == supplier:
+                    row["documents"] = matches
         effects = []
         current, previous = self.contribution(), self.contribution(previous=True)
         if current and previous:

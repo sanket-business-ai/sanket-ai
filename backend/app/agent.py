@@ -407,12 +407,28 @@ def margin_conclusion(results, tools, challenged=False):
         supplier = price["supplier_name"]
         documents = corroborating(price.get("documents", []))
         unit = f"NPR {price['previous_unit_cost']:,.0f} → NPR {price['current_unit_cost']:,.0f}"
+        # A supplier's price rise usually covers several products; count all of them, not only the largest.
+        raised = {
+            row["product_id"]
+            for row in costs["price_changes"]
+            if row["supplier_id"] == price["supplier_id"] and (row["change"] or 0) >= MATERIAL_CHANGE
+        }
+        affected = [
+            row for row in costs["product_cost_effects"] if row["product_id"] in raised and row["rate_effect"] > 0
+        ]
+        effect = sum(row["rate_effect"] for row in affected)
+        if len(affected) > 1:
+            scope = f"unit costs on {len(affected)} products rose (for example {price['product_name']}: {price['change']:.1f}%, {unit})"
+            action = f"renegotiate prices with {supplier} or review selling prices for its products"
+        else:
+            scope = f"{price['product_name']} unit cost rose {price['change']:.1f}% ({unit})"
+            action = f"renegotiate the {price['product_name']} price with {supplier} or review its selling price"
         h2 = hypothesis(
             "H2",
             f"{supplier} price increase raised cost of goods",
             "supported" if documents else "inconclusive",
-            [product["evidence_id"], price["evidence_id"], *documents],
-            explanation=f"{price['product_name']} unit cost rose {price['change']:.1f}% ({unit}), adding NPR {product['rate_effect']:,.0f} to cost of goods on {product['current_units']} units. "
+            [*[row["evidence_id"] for row in affected[:3]], price["evidence_id"], *documents],
+            explanation=f"From {supplier}, {scope}, adding NPR {effect:,.0f} to cost of goods at current volume. "
             + (
                 "A retrieved document states the price change."
                 if documents
@@ -422,15 +438,15 @@ def margin_conclusion(results, tools, challenged=False):
         if documents:
             findings.append(
                 {
-                    "sentence": f"{supplier} raised the {price['product_name']} unit cost {price['change']:.1f}% ({unit}), adding NPR {product['rate_effect']:,.0f} to cost of goods.",
-                    "chain": f"{supplier} price {price['change']:+.1f}% (NPR {product['rate_effect']:,.0f})",
-                    "effect": product["rate_effect"],
-                    "action": f"renegotiate the {price['product_name']} price with {supplier} or review its selling price",
+                    "sentence": f"{supplier} raised prices: {scope}, adding NPR {effect:,.0f} to cost of goods.",
+                    "chain": f"{supplier} price {price['change']:+.1f}% (NPR {effect:,.0f})",
+                    "effect": effect,
+                    "action": action,
                 }
             )
         else:
             signals.append(
-                f"The {price['product_name']} unit cost from {supplier} rose {price['change']:.1f}%, adding NPR {product['rate_effect']:,.0f}, but no retrieved document explains the change."
+                f"From {supplier}, {scope}, adding NPR {effect:,.0f}, but no retrieved document explains the change."
             )
     elif product:
         h2 = hypothesis(
