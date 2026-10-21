@@ -9,12 +9,14 @@ import {
   Plus,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UploadCloud,
 } from 'lucide-react'
 import { api, download, post } from '@/lib/api'
 import type { Contracts, DemoPack, DemoResult, Source, System } from '@/lib/types'
 import { dateTime, number } from '@/lib/utils'
 import { Empty, ErrorState, Loading, PageHeading } from '@/components/shared'
+import { DeleteSource } from '@/components/DeleteSource'
 import { SourcePreview } from '@/components/SourcePreview'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,6 +41,7 @@ export default function Sources() {
   const [kind, setKind] = useState('orders')
   const [file, setFile] = useState<File | null>(null)
   const [source, setSource] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<Source | null>(null)
   const [allVersions, setAllVersions] = useState(false)
   const [success, setSuccess] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -284,6 +287,19 @@ export default function Sources() {
                           >
                             Inspect
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="danger-on-card text-danger hover:text-danger"
+                            onClick={() => {
+                              setSuccess('')
+                              setDeleting(item)
+                            }}
+                            aria-label={`Delete ${item.name}`}
+                            title="Delete source"
+                          >
+                            <Trash2 />
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -440,6 +456,7 @@ export default function Sources() {
         </DialogContent>
       </Dialog>
       <SourcePreview sourceId={source} onClose={() => setSource(null)} />
+      <DeleteSource source={deleting} onClose={() => setDeleting(null)} onDeleted={setSuccess} />
     </>
   )
 }

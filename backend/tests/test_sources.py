@@ -86,3 +86,81 @@ def test_download_neutralises_spreadsheet_formulas(workspace):
     rows = list(csv.reader(io.StringIO(client.get(f"/api/sources/{source['id']}/download").text)))
     assert rows[1][1] == '\'=HYPERLINK("http://x")'
     assert client.get("/api/sources/missing/download").status_code == 404
+
+
+NEW_ORDERS = b"id,date,customer_id,product_id,quantity,revenue,status\nNEW,2026-10-12,C1,P1,1,4000,delivered\n"
+
+
+def run(client, factory, question="Why did our sales drop in the latest month?"):
+    job = client.post("/api/investigations", json={"question": question}).json()
+    assert process_one(factory)
+    return job["id"]
+
+
+def active_names(client):
+    return {item["name"] for item in client.get("/api/sources").json() if item["active"]}
+
+
+def test_deleting_an_unused_current_version_restores_the_previous_one(seeded):
+    client, factory = seeded
+    new = client.post("/api/sources", data={"kind": "orders"}, files={"file": ("orders_v2.csv", NEW_ORDERS)}).json()
+    assert "orders_v2.csv" in active_names(client)
+    assert client.get(f"/api/sources/{new['id']}/usage").json() == {
+        "investigations": 0,
+        "actions": 0,
+        "running": False,
+        "active": True,
+        "replacement": "himalayanmart_orders.csv",
+    }
+    response = client.post(f"/api/sources/{new['id']}/delete")
+    assert response.status_code == 200 and response.json()["investigations"] == 0
+    assert "himalayanmart_orders.csv" in active_names(client)
+    assert client.get(f"/api/sources/{new['id']}").status_code == 404
+    with factory() as db:
+        event = db.scalar(select(Audit).where(Audit.event == "source.deleted"))
+        assert event.details["name"] == "orders_v2.csv" and event.details["rows"] == 1
+    upload = client.post("/api/sources", data={"kind": "orders"}, files={"file": ("orders_v2.csv", NEW_ORDERS)})
+    assert upload.status_code == 201, "the same file can be uploaded again"
+
+
+def test_deleting_a_used_source_needs_confirmation_and_removes_its_reports(seeded):
+    client, factory = seeded
+    first = run(client, factory)
+    assert client.post(f"/api/investigations/{first}/challenge").status_code == 202
+    assert process_one(factory)
+    orders = source_named(client, "himalayanmart_orders.csv")
+    usage = client.get(f"/api/sources/{orders['id']}/usage").json()
+    assert usage["investigations"] == 2 and usage["actions"] >= 1 and usage["replacement"] is None
+    refused = client.post(f"/api/sources/{orders['id']}/delete")
+    assert refused.status_code == 409 and "2 investigation(s)" in refused.json()["detail"]
+    assert client.get("/api/investigations").json()["total"] == 2, "a refused delete changes nothing"
+    response = client.post(f"/api/sources/{orders['id']}/delete", json={"delete_investigations": True})
+    assert response.json() == {"deleted": orders["id"], "investigations": 2, "actions": usage["actions"]}
+    assert client.get("/api/investigations").json()["total"] == 0
+    assert client.get("/api/actions").json() == []
+
+
+def test_surviving_follow_ups_only_lose_their_parent_link(seeded):
+    client, factory = seeded
+    parent = run(client, factory)
+    client.post("/api/sources", data={"kind": "orders"}, files={"file": ("orders_v2.csv", NEW_ORDERS)})
+    child = run(client, factory)
+    with factory() as db:
+        db.get(Investigation, child).parent_id = parent
+        db.commit()
+    old = source_named(client, "himalayanmart_orders.csv")
+    response = client.post(f"/api/sources/{old['id']}/delete", json={"delete_investigations": True})
+    assert response.status_code == 200 and response.json()["investigations"] == 1
+    survivor = client.get(f"/api/investigations/{child}").json()
+    assert survivor["status"] == "completed" and survivor["parent_id"] is None
+
+
+def test_sources_used_by_unfinished_investigations_cannot_be_deleted(seeded):
+    client, _ = seeded
+    client.post("/api/investigations", json={"question": "Why did our sales drop in the latest month?"})
+    orders = source_named(client, "himalayanmart_orders.csv")
+    assert client.get(f"/api/sources/{orders['id']}/usage").json()["running"] is True
+    response = client.post(f"/api/sources/{orders['id']}/delete", json={"delete_investigations": True})
+    assert response.status_code == 409 and "still running" in response.json()["detail"]
+    assert client.get("/api/sources/missing/usage").status_code == 404
+    assert client.post("/api/sources/missing/delete").status_code == 404
