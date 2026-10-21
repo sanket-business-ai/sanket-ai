@@ -73,6 +73,46 @@ def test_hosted_provider_waits_for_rate_limits(monkeypatch):
     assert waits == [2.0]
 
 
+def test_schema_rejection_gets_one_corrective_retry(monkeypatch):
+    rejected = httpx.Response(
+        400,
+        json={
+            "error": {
+                "code": "json_validate_failed",
+                "message": "'/rationale' does not validate with maxLength: got 710, want 500",
+            }
+        },
+    )
+    accepted = httpx.Response(
+        200,
+        json={
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"rationale": "Check courier fees.", "hypotheses": [], "tool": "finish", "query": ""}'
+                    }
+                }
+            ]
+        },
+    )
+    replies, sent = [rejected, accepted], []
+
+    def handler(request):
+        sent.append(json.loads(request.content)["messages"])
+        return replies.pop(0)
+
+    hosted(monkeypatch, handler)
+    messages = [{"role": "user", "content": "Plan the investigation."}]
+    assert agent.model_json(AgentStep, messages).tool == "finish"
+    assert len(sent) == 2 and "maxLength" in sent[1][-1]["content"]
+    assert messages == [{"role": "user", "content": "Plan the investigation."}], "caller history is unchanged"
+
+    replies[:], sent[:] = [rejected, rejected, accepted], []
+    with pytest.raises(httpx.HTTPStatusError):
+        agent.model_json(AgentStep, messages)
+    assert len(sent) == 2, "only one corrective retry"
+
+
 def test_hosted_provider_configuration_is_validated():
     with pytest.raises(ValueError, match="needs llm_base_url"):
         Settings(llm_provider="openai", agent_mode="auto", llm_base_url="", llm_api_key="", llm_model="")
