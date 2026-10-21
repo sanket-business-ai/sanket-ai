@@ -10,6 +10,7 @@ from sqlalchemy import or_, select, update
 
 from .actions import assess_action
 from .agent import investigate
+from .connectors import sync_due_connections
 from .db import Action, Investigation, Runtime, SessionLocal, Source, now, uid
 
 logger = logging.getLogger(__name__)
@@ -155,6 +156,7 @@ def main():
                 db.commit()
             if time.monotonic() - last_monitor >= 60:
                 monitor_due_actions()
+                sync_due_connections()
                 last_monitor = time.monotonic()
             if not process_one():
                 time.sleep(2)

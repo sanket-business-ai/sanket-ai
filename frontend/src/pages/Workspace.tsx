@@ -29,7 +29,7 @@ function ResetWorkspace() {
       setOpen(false)
       setTyped('')
       setDone(
-        `Removed ${data.sources} sources, ${data.investigations} investigations and ${data.actions} actions. Load a demo or upload files to start again.`,
+        `Removed ${data.sources} sources, ${data.investigations} investigations, ${data.actions} actions and ${data.connections} connections. Load a demo or upload files to start again.`,
       )
       client.invalidateQueries()
     },
@@ -48,9 +48,9 @@ function ResetWorkspace() {
       </CardHeader>
       <CardContent>
         <p className="text-xs leading-6 text-muted-foreground">
-          Permanently deletes every data source, investigation and action so you can load a
-          different demo. Your sign-in and the audit trail are kept. Available only while demo
-          loading is enabled, never in production.
+          Permanently deletes every data source, investigation, action and live connection so you
+          can load a different demo. Your sign-in and the audit trail are kept. Available only while
+          demo loading is enabled, never in production.
         </p>
         {done && (
           <p role="status" className="mt-4 rounded-lg bg-muted p-3 text-xs leading-6">

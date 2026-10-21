@@ -5,6 +5,7 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  Link2,
   Loader2,
   Plus,
   ShieldCheck,
@@ -16,6 +17,8 @@ import { api, download, post } from '@/lib/api'
 import type { Contracts, DemoPack, DemoResult, Source, System } from '@/lib/types'
 import { dateTime, number } from '@/lib/utils'
 import { Empty, ErrorState, Loading, PageHeading } from '@/components/shared'
+import { ConnectSheet } from '@/components/ConnectSheet'
+import { Connections } from '@/components/Connections'
 import { DeleteSource } from '@/components/DeleteSource'
 import { SourcePreview } from '@/components/SourcePreview'
 import { Badge } from '@/components/ui/badge'
@@ -42,6 +45,7 @@ export default function Sources() {
   const [file, setFile] = useState<File | null>(null)
   const [source, setSource] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<Source | null>(null)
+  const [connecting, setConnecting] = useState(false)
   const [allVersions, setAllVersions] = useState(false)
   const [success, setSuccess] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -111,15 +115,21 @@ export default function Sources() {
         title="Data sources"
         description="Your business evidence, in one place. Each upload becomes a preserved source version."
         action={
-          <Button
-            onClick={() => {
-              upload.reset()
-              setOpen(true)
-            }}
-          >
-            <Plus />
-            Upload evidence
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setConnecting(true)}>
+              <Link2 />
+              Connect Google Sheet
+            </Button>
+            <Button
+              onClick={() => {
+                upload.reset()
+                setOpen(true)
+              }}
+            >
+              <Plus />
+              Upload evidence
+            </Button>
+          </div>
         }
       />
       <section className="mb-7 grid gap-4 sm:grid-cols-3">
@@ -155,6 +165,7 @@ export default function Sources() {
           <ErrorState error={failure} />
         </div>
       )}
+      <Connections onMessage={setSuccess} />
       {query.isPending ? (
         <Loading />
       ) : query.error ? (
@@ -455,6 +466,7 @@ export default function Sources() {
           </form>
         </DialogContent>
       </Dialog>
+      <ConnectSheet open={connecting} onOpenChange={setConnecting} onConnected={setSuccess} />
       <SourcePreview sourceId={source} onClose={() => setSource(null)} />
       <DeleteSource source={deleting} onClose={() => setDeleting(null)} onDeleted={setSuccess} />
     </>

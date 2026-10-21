@@ -29,6 +29,14 @@ class DemoRequest(StrictModel):
     pack: Literal["supply", "margin"] = "supply"
 
 
+class ConnectionRequest(StrictModel):
+    provider: Literal["google_sheets"] = "google_sheets"
+    kind: str = Field(min_length=1, max_length=32)
+    url: str = Field(min_length=20, max_length=2000)
+    name: str = Field(default="", max_length=120)
+    refresh_hours: Literal[0, 1, 6, 24] = 24
+
+
 class DeleteSourceRequest(StrictModel):
     delete_investigations: bool = False
 

@@ -169,6 +169,20 @@ export interface SourceUsage {
   running: boolean
   active: boolean
   replacement: string | null
+  connections: string[]
+}
+export interface Connection {
+  id: string
+  provider: string
+  kind: string
+  name: string
+  url: string
+  refresh_hours: number
+  last_synced_at: string | null
+  last_status: 'updated' | 'unchanged' | 'error' | null
+  last_error: string | null
+  last_source_id: string | null
+  created_at: string
 }
 export interface DeleteResult {
   deleted: string
@@ -176,6 +190,7 @@ export interface DeleteResult {
   actions: number
 }
 export interface ResetResult {
+  connections: number
   sources: number
   investigations: number
   actions: number
