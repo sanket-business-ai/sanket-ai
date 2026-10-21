@@ -175,6 +175,7 @@ def test_model_plans_with_margin_tools_and_verification_completes(margin, monkey
         results = [json.loads(m["content"]) for m in messages if m["content"].startswith('{"tool"')]
         courier = next(r for r in results if r["tool"] == "get_delivery_costs")["evidence"][0]
         assert "result" not in results[0], "the planner sees evidence claims, not raw tool output"
+        assert next(r for r in results if r["tool"] == "get_delivery_costs")["unpriced_deliveries"] == 0
         return AgentConclusion.model_validate(
             {
                 "root_cause": "Courier fees rose; the rate notice and fee records agree.",
