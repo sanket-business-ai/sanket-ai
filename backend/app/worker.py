@@ -106,9 +106,7 @@ def process_one(session_factory=SessionLocal):
             job = db.get(Investigation, job_id)
             if job.lease_token == token:
                 job.status = "failed"
-                job.error = (
-                    "Investigation could not finish. Check local model availability and worker logs, then retry."
-                )
+                job.error = "Investigation could not finish. Check model availability and worker logs, then retry."
                 job.completed_at = now()
                 db.commit()
     return True

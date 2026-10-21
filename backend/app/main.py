@@ -179,7 +179,8 @@ def system(db: Session = Depends(get_db), user: User = Depends(current_user)):
     heartbeat = db.get(Runtime, "worker")
     return {
         "agent_mode": settings().agent_mode,
-        "model": settings().ollama_model,
+        "model": settings().model_name,
+        "llm_provider": settings().llm_provider,
         "worker_online": bool(
             heartbeat and heartbeat.heartbeat.replace(tzinfo=now().tzinfo) > now() - timedelta(minutes=20)
         ),

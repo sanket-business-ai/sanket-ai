@@ -37,7 +37,11 @@ export default function Workspace() {
                   <dd className="capitalize">{system.data.agent_mode}</dd>
                 </div>
                 <div>
-                  <dt>Configured local model</dt>
+                  <dt>
+                    {system.data.llm_provider === 'openai'
+                      ? 'Configured hosted model'
+                      : 'Configured local model'}
+                  </dt>
                   <dd>{system.data.model}</dd>
                 </div>
                 <div>

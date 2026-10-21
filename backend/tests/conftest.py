@@ -3,6 +3,7 @@ from pathlib import Path
 
 os.environ["SANKET_ADMIN_PASSWORD"] = "test-only-password-12345"
 os.environ["SANKET_AGENT_MODE"] = "deterministic"
+os.environ["SANKET_LLM_PROVIDER"] = "ollama"
 os.environ["SANKET_DATABASE_URL"] = "sqlite:///" + str(
     Path(__file__).resolve().parents[2] / ".cache/test-bootstrap.db"
 ).replace("\\", "/")
