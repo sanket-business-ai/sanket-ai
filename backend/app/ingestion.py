@@ -49,6 +49,8 @@ CONTRACTS = {
 # Columns that may be left out of the header entirely; blank values are stored as null.
 OPTIONAL_COLUMNS = {"deliveries": {"courier": "optional_text", "fee": "optional_money"}}
 STATUSES = {"delivered", "completed", "cancelled", "returned", "pending", "shipped"}
+# Document chunks are CHUNK_SIZE characters long and start every CHUNK_STEP characters, so they overlap.
+CHUNK_STEP, CHUNK_SIZE = 1000, 1200
 
 
 def parse_date(value):
@@ -189,8 +191,8 @@ def parse_upload(data, filename, kind):
         chunks = []
         for page, text in pages:
             text = text.replace("\x00", "").strip()
-            for start in range(0, len(text), 1000):
-                chunks.append({"page": page, "chunk": len(chunks) + 1, "text": text[start : start + 1200]})
+            for start in range(0, len(text), CHUNK_STEP):
+                chunks.append({"page": page, "chunk": len(chunks) + 1, "text": text[start : start + CHUNK_SIZE]})
         if not chunks:
             raise ValueError("No readable text found. Scanned PDFs require OCR first.")
         if len(chunks) > 500:
@@ -216,6 +218,35 @@ def parse_upload(data, filename, kind):
         raise ValueError("Datasets must be CSV or XLSX. Use ISO dates (YYYY-MM-DD).")
     rows = validate_rows(rows, kind)
     return {"rows": rows}, len(rows)
+
+
+def safe_cell(value):
+    # Spreadsheet apps run cells starting with these characters as formulas.
+    text = "" if value is None else str(value)
+    return "'" + text if text.startswith(("=", "+", "-", "@", "\t", "\r")) else text
+
+
+def export_csv(kind, rows):
+    """The stored, normalized snapshot of a dataset as CSV."""
+    columns = list(CONTRACTS[kind]) + [
+        column for column in OPTIONAL_COLUMNS.get(kind, {}) if rows and column in rows[0]
+    ]
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(columns)
+    writer.writerows([safe_cell(row.get(column)) for column in columns] for row in rows)
+    return buffer.getvalue()
+
+
+def export_text(chunks):
+    """The text SanketAI extracted from a document, with chunk overlaps removed."""
+    pages = {}
+    for chunk in chunks:
+        pages.setdefault(chunk["page"], []).append(chunk["text"])
+    parts = ["".join(text[:CHUNK_STEP] for text in texts[:-1]) + texts[-1] for texts in pages.values()]
+    if len(pages) == 1:
+        return parts[0]
+    return "\n\n".join(f"[Page {page}]\n{text}" for page, text in zip(pages, parts))
 
 
 def store_source(db, data, filename, kind):

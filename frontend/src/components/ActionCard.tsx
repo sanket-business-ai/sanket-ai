@@ -10,6 +10,12 @@ import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog'
 
+const kpiLabels: Record<string, string> = {
+  late_rate: 'Late delivery rate',
+  revenue: 'Recognized revenue',
+  contribution: 'Contribution estimate',
+}
+
 export function ActionCard({ action }: { action: Action }) {
   const [confirm, setConfirm] = useState(false)
   const client = useQueryClient()
@@ -42,9 +48,7 @@ export function ActionCard({ action }: { action: Action }) {
       <div className="mt-5 grid grid-cols-1 gap-4 rounded-lg bg-muted/70 p-4 text-xs sm:grid-cols-3">
         <div>
           <p className="text-[11px] text-muted-foreground">MONITORED KPI</p>
-          <p className="mt-2 font-medium">
-            {action.metric === 'late_rate' ? 'Late delivery rate' : 'Recognized revenue'}
-          </p>
+          <p className="mt-2 font-medium">{kpiLabels[action.metric] ?? action.metric}</p>
         </div>
         <div>
           <p className="text-[11px] text-muted-foreground">BASELINE</p>

@@ -163,6 +163,11 @@ export interface DemoResult {
   documents: number
   pack: DemoPack
 }
+export interface ResetResult {
+  sources: number
+  investigations: number
+  actions: number
+}
 export interface Dashboard {
   metrics: Metric[]
   period: Period | null
