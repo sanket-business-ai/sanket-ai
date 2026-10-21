@@ -90,6 +90,24 @@ class Action(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class Connection(Base):
+    """A live data source that is fetched again on a schedule; each change becomes a new Source version."""
+
+    __tablename__ = "connections"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    provider: Mapped[str] = mapped_column(String(32))
+    kind: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(120))
+    url: Mapped[str] = mapped_column(Text)
+    refresh_hours: Mapped[int] = mapped_column(Integer, default=24)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_source_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Audit(Base):
     __tablename__ = "audit_events"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)

@@ -29,7 +29,7 @@ def test_reset_clears_evidence_reports_and_actions_but_keeps_the_audit_trail(see
     assert process_one(factory)
     response = client.post("/api/workspace/reset", json=RESET)
     assert response.status_code == 200, response.text
-    assert response.json() == {"sources": 12, "investigations": 1, "actions": 1}
+    assert response.json() == {"connections": 0, "sources": 12, "investigations": 1, "actions": 1}
     with factory() as db:
         for model in (Source, Investigation, Action):
             assert db.scalar(select(func.count()).select_from(model)) == 0
@@ -111,6 +111,7 @@ def test_deleting_an_unused_current_version_restores_the_previous_one(seeded):
         "running": False,
         "active": True,
         "replacement": "himalayanmart_orders.csv",
+        "connections": [],
     }
     response = client.post(f"/api/sources/{new['id']}/delete")
     assert response.status_code == 200 and response.json()["investigations"] == 0

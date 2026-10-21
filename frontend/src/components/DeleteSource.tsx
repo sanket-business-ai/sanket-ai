@@ -72,6 +72,12 @@ export function DeleteSource({
                   : `New investigations will have no ${kind} until you upload a new file.`}
               </p>
             )}
+            {usage.data.connections.length > 0 && (
+              <p className="rounded-lg border border-warning/20 bg-warning-bg p-3 text-warning">
+                The live connection {usage.data.connections.join(', ')} imported this file and will
+                import it again at its next sync. Disconnect it first to stop that.
+              </p>
+            )}
             {reports > 0 && (
               <p className="rounded-lg bg-danger-bg p-3 text-danger">
                 {reports} investigation(s) and {usage.data.actions} action(s) used this file and

@@ -18,11 +18,13 @@ from .actions import assess_action
 from .analysis import Tools
 from .auth import COOKIE, bootstrap_admin, current_user, hash_password, new_session, verify_password
 from .config import settings
+from .connectors import import_sheet, sheet_export_url, sync_connection
 from .db import (
     Action,
     Audit,
     AuthSession,
     Base,
+    Connection,
     Investigation,
     LoginAttempt,
     Runtime,
@@ -36,7 +38,15 @@ from .db import (
 from .demo import seed_demo
 from .ingestion import CONTRACTS, OPTIONAL_COLUMNS, active_sources, export_csv, export_text, store_source
 from .jobs import enqueue
-from .schemas import Decision, DeleteSourceRequest, DemoRequest, InvestigationRequest, Login, ResetRequest
+from .schemas import (
+    ConnectionRequest,
+    Decision,
+    DeleteSourceRequest,
+    DemoRequest,
+    InvestigationRequest,
+    Login,
+    ResetRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +122,10 @@ def summary(job):
         "confidence": job.report.get("confidence") if job.report else None,
         "engine": job.report.get("engine") if job.report else None,
     }
+
+
+def connection_dict(connection):
+    return {column.name: getattr(connection, column.name) for column in Connection.__table__.columns}
 
 
 def action_dict(action):
@@ -278,6 +292,7 @@ def usage(source_id: str, db: Session = Depends(get_db), user: User = Depends(cu
         "running": busy,
         "active": active,
         "replacement": replacement,
+        "connections": list(db.scalars(select(Connection.name).where(Connection.last_source_id == source.id))),
     }
 
 
@@ -353,6 +368,76 @@ async def upload(
     return source_dict(source, {s.id for s in active_sources(db)})
 
 
+@app.get("/api/connections")
+def connections(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return [connection_dict(c) for c in db.scalars(select(Connection).order_by(Connection.created_at.desc()))]
+
+
+@app.post("/api/connections", status_code=201)
+def create_connection(payload: ConnectionRequest, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    if payload.kind not in CONTRACTS:
+        raise HTTPException(422, "Choose a dataset type. Documents cannot be connected from Google Sheets.")
+    try:
+        url = sheet_export_url(payload.url)
+        if db.scalar(select(Connection).where(Connection.url == url, Connection.kind == payload.kind)):
+            raise HTTPException(409, "This sheet is already connected for that dataset type.")
+        name = payload.name.strip() or f"Google Sheet {payload.kind}"
+        # Import before saving the connection so a private or invalid sheet is reported straight away.
+        source, created = import_sheet(db, payload.kind, name, url)
+    except (ValueError, UnicodeError, csv.Error) as error:
+        db.rollback()
+        raise HTTPException(422, str(error)) from error
+    connection = Connection(
+        provider=payload.provider,
+        kind=payload.kind,
+        name=name,
+        url=url,
+        refresh_hours=payload.refresh_hours,
+        last_synced_at=now(),
+        last_status="updated" if created else "unchanged",
+        last_source_id=source.id,
+        created_by=user.id,
+    )
+    db.add(connection)
+    db.flush()
+    db.add(
+        Audit(
+            actor=user.id,
+            event="connection.created",
+            entity_id=connection.id,
+            details={"provider": payload.provider, "kind": payload.kind, "source_id": source.id},
+        )
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "This data was imported concurrently. Refresh and try again.")
+    return connection_dict(connection)
+
+
+@app.post("/api/connections/{connection_id}/sync")
+def sync_now(connection_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    connection = db.get(Connection, connection_id)
+    if not connection:
+        raise HTTPException(404, "Connection not found")
+    sync_connection(db, connection, user.id)
+    db.commit()
+    return connection_dict(connection)
+
+
+@app.post("/api/connections/{connection_id}/delete")
+def disconnect(connection_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    connection = db.get(Connection, connection_id)
+    if not connection:
+        raise HTTPException(404, "Connection not found")
+    details = {"name": connection.name, "kind": connection.kind, "provider": connection.provider}
+    db.delete(connection)
+    db.add(Audit(actor=user.id, event="connection.deleted", entity_id=connection_id, details=details))
+    db.commit()
+    return {"deleted": connection_id}
+
+
 @app.post("/api/demo", status_code=201)
 def demo(payload: DemoRequest | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
     pack = payload.pack if payload else "supply"
@@ -382,11 +467,14 @@ def reset_workspace(payload: ResetRequest, db: Session = Depends(get_db), user: 
     if db.scalar(select(func.count()).select_from(Investigation).where(unfinished())):
         raise HTTPException(409, "Wait for running investigations to finish before resetting the workspace")
     removed = {
+        "connections": db.scalar(select(func.count()).select_from(Connection)),
         "sources": db.scalar(select(func.count()).select_from(Source)),
         "investigations": db.scalar(select(func.count()).select_from(Investigation)),
         "actions": db.scalar(select(func.count()).select_from(Action)),
     }
-    # Reports, actions and their evidence go together, so no report outlives its sources.
+    # Reports, actions and their evidence go together, so no report outlives its sources. Connections go
+    # too, or their next sync would refill the workspace.
+    db.execute(delete(Connection))
     db.execute(delete(Action))
     db.execute(update(Investigation).values(parent_id=None))
     db.execute(delete(Investigation))
