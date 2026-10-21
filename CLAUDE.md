@@ -24,7 +24,7 @@ npm run format:check        # prettier; `npm run format` to fix
 npm run build               # tsc -b + vite build (the only frontend type check)
 npm run test:e2e            # Playwright; add `-- -g "<title>"` for a single test
 
-# Docker (PostgreSQL); add -f compose.ollama.yaml to run Ollama in a container
+# Docker (PostgreSQL); uses Ollama on the host or a hosted model
 docker compose up --build -d
 ```
 
