@@ -86,6 +86,12 @@ Export inspectable synthetic source files if needed:
 .venv\Scripts\python.exe scripts/export_demo.py
 ```
 
+For a larger, realistic test set, build the **HimalayanMart Gadgets** dataset: a year of a fictional Nepali mobile-accessories seller (about 28,000 orders across marketplace, website, Facebook & Instagram and TikTok; cash on delivery and wallets; three fictional couriers and four suppliers; the real 2025–26 festival calendar and the monsoon). It contains five scenario packs, each exported on the date its planted problem appears (cash-on-delivery refusals, a margin squeeze, an ad boost that did not pay, monsoon delays and a Dashain stockout), plus a README, data dictionary and answer key:
+
+```powershell
+.venv\Scripts\python.exe scripts/export_gadgets.py --out HimalayanMart_Gadgets_Nepal_dataset.zip
+```
+
 ## Data contracts
 
 Upload complete datasets, with matching IDs across files and ISO dates such as `2026-09-30`. All amounts are NPR and must be non-negative finite numbers. Upload at least 56 days of orders for comparable 28-day windows. Orders with `delivered` or `completed` status contribute recognized revenue; other supported values are `cancelled`, `returned`, `pending`, and `shipped`.
