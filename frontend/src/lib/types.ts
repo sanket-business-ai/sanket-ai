@@ -163,6 +163,18 @@ export interface DemoResult {
   documents: number
   pack: DemoPack
 }
+export interface SourceUsage {
+  investigations: number
+  actions: number
+  running: boolean
+  active: boolean
+  replacement: string | null
+}
+export interface DeleteResult {
+  deleted: string
+  investigations: number
+  actions: number
+}
 export interface ResetResult {
   sources: number
   investigations: number

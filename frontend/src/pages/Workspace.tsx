@@ -41,7 +41,7 @@ function ResetWorkspace() {
   return (
     <Card className="mb-7 border-danger/30">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-danger">
+        <CardTitle className="danger-on-card flex items-center gap-2 text-danger">
           <RotateCcw size={17} />
           Reset workspace
         </CardTitle>

@@ -29,6 +29,10 @@ class DemoRequest(StrictModel):
     pack: Literal["supply", "margin"] = "supply"
 
 
+class DeleteSourceRequest(StrictModel):
+    delete_investigations: bool = False
+
+
 class ResetRequest(StrictModel):
     confirm: Literal["RESET"]
 

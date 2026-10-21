@@ -36,7 +36,7 @@ from .db import (
 from .demo import seed_demo
 from .ingestion import CONTRACTS, OPTIONAL_COLUMNS, active_sources, export_csv, export_text, store_source
 from .jobs import enqueue
-from .schemas import Decision, DemoRequest, InvestigationRequest, Login, ResetRequest
+from .schemas import Decision, DeleteSourceRequest, DemoRequest, InvestigationRequest, Login, ResetRequest
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,23 @@ async def request_headers(request, call_next):
 async def unexpected_error(request, error):
     logger.exception("Unhandled request failure: %s", request.url.path, exc_info=error)
     return JSONResponse(status_code=500, content={"detail": "An unexpected error occurred. Check server logs."})
+
+
+def unfinished():
+    """Queued investigations, or running ones whose 30-minute lease is still live."""
+    live_lease = now() - timedelta(minutes=30)
+    return (Investigation.status == "queued") | (
+        (Investigation.status == "running") & (Investigation.started_at > live_lease)
+    )
+
+
+def source_usage(db, source):
+    ids = [job.id for job in db.scalars(select(Investigation)) if source.id in job.source_ids]
+    if not ids:
+        return ids, 0, False
+    actions = db.scalar(select(func.count()).select_from(Action).where(Action.investigation_id.in_(ids)))
+    busy = db.scalar(select(func.count()).select_from(Investigation).where(Investigation.id.in_(ids), unfinished()))
+    return ids, actions, bool(busy)
 
 
 def require_job(db, investigation_id):
@@ -239,6 +256,68 @@ def download_source(source_id: str, db: Session = Depends(get_db), user: User = 
     )
 
 
+@app.get("/api/sources/{source_id}/usage")
+def usage(source_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    source = db.get(Source, source_id)
+    if not source:
+        raise HTTPException(404, "Source not found")
+    ids, actions, busy = source_usage(db, source)
+    active = source.id in {s.id for s in active_sources(db)}
+    replacement = None
+    if active and source.kind != "document":
+        older = db.scalar(
+            select(Source)
+            .where(Source.kind == source.kind, Source.id != source.id)
+            .order_by(Source.created_at.desc(), Source.id.desc())
+            .limit(1)
+        )
+        replacement = older.name if older else None
+    return {
+        "investigations": len(ids),
+        "actions": actions,
+        "running": busy,
+        "active": active,
+        "replacement": replacement,
+    }
+
+
+@app.post("/api/sources/{source_id}/delete")
+def delete_source(
+    source_id: str,
+    payload: DeleteSourceRequest | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    source = db.get(Source, source_id)
+    if not source:
+        raise HTTPException(404, "Source not found")
+    ids, actions, busy = source_usage(db, source)
+    if busy:
+        raise HTTPException(409, "An investigation using this source is still running. Wait for it to finish.")
+    if ids and not (payload and payload.delete_investigations):
+        raise HTTPException(
+            409,
+            f"{len(ids)} investigation(s) used this source. Confirm deleting them too, or upload a corrected version instead.",
+        )
+    # A report never outlives its evidence: investigations that used the source go with it.
+    if ids:
+        db.execute(delete(Action).where(Action.investigation_id.in_(ids)))
+        db.execute(update(Investigation).where(Investigation.parent_id.in_(ids)).values(parent_id=None))
+        db.execute(delete(Investigation).where(Investigation.id.in_(ids)))
+    details = {
+        "name": source.name,
+        "kind": source.kind,
+        "rows": source.row_count,
+        "checksum": source.checksum,
+        "investigations": ids,
+        "actions": actions,
+    }
+    db.delete(source)
+    db.add(Audit(actor=user.id, event="source.deleted", entity_id=source_id, details=details))
+    db.commit()
+    return {"deleted": source_id, "investigations": len(ids), "actions": actions}
+
+
 @app.post("/api/sources", status_code=201)
 async def upload(
     file: UploadFile = File(...),
@@ -300,16 +379,7 @@ def reset_workspace(payload: ResetRequest, db: Session = Depends(get_db), user: 
     # A testing aid: production rejects demo_enabled, so real business data cannot be wiped here.
     if not settings().demo_enabled:
         raise HTTPException(404, "Workspace reset is disabled")
-    live_lease = now() - timedelta(minutes=30)
-    busy = db.scalar(
-        select(func.count())
-        .select_from(Investigation)
-        .where(
-            (Investigation.status == "queued")
-            | ((Investigation.status == "running") & (Investigation.started_at > live_lease))
-        )
-    )
-    if busy:
+    if db.scalar(select(func.count()).select_from(Investigation).where(unfinished())):
         raise HTTPException(409, "Wait for running investigations to finish before resetting the workspace")
     removed = {
         "sources": db.scalar(select(func.count()).select_from(Source)),
