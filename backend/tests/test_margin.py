@@ -173,12 +173,13 @@ def test_model_plans_with_margin_tools_and_verification_completes(margin, monkey
         if schema is AgentStep:
             return next(steps)
         results = [json.loads(m["content"]) for m in messages if m["content"].startswith('{"tool"')]
-        courier = next(r for r in results if r["tool"] == "get_delivery_costs")["result"]["couriers"][0]
+        courier = next(r for r in results if r["tool"] == "get_delivery_costs")["evidence"][0]
+        assert "result" not in results[0], "the planner sees evidence claims, not raw tool output"
         return AgentConclusion.model_validate(
             {
                 "root_cause": "Courier fees rose; the rate notice and fee records agree.",
                 "causal_chain": ["Courier rate rise", "Lower contribution"],
-                "evidence_ids": [courier["evidence_id"]],
+                "evidence_ids": [courier["id"]],
                 "confidence": "high",
                 "hypotheses": [
                     {

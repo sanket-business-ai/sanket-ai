@@ -9,7 +9,7 @@ flowchart TD
     UI[React + Vite + shadcn + Tailwind] --> API[Authenticated FastAPI API]
     API --> Queue[Durable investigation queue]
     Queue --> Worker[Python worker]
-    Worker <--> LLM[Ollama / Qwen3]
+    Worker <--> LLM[Ollama / Qwen3, or a hosted OpenAI-compatible API]
     Worker --> Tools[Allowlisted read-only analysis tools]
     Tools --> DB
     Tools --> Retrieval[Lexical document retrieval]
@@ -27,7 +27,7 @@ The API validates input, snapshots the active source IDs, and returns HTTP 202. 
 
 The model produces schema-validated planning steps and chooses allowlisted Python tools. These tools never run generated code, arbitrary SQL, filesystem paths, or outbound URLs. A mandatory verification pass runs even if the planner stops early. For supply and sales questions it checks inventory, supply, deliveries, marketing, customer activity, and documents. For margin, profit, and cost questions (or a discover run where contribution, but not revenue, is anomalous) it reconciles contribution and measures courier fees and supplier purchase prices. Final hypothesis references must resolve to collected evidence. Unsupported/rejected hypotheses require the appropriate evidence. High confidence is capped at medium because the inputs are observational.
 
-`auto` mode falls back visibly to deterministic analysis if Ollama is unavailable or its output fails validation. `ollama` mode fails the job instead. `deterministic` mode runs without an LLM. The deterministic explanation covers two scenarios. The supply scenario is supplier → stockout → product revenue. The margin scenario names a courier or supplier as a cause only when a measured price rise (fee per delivery or purchase unit cost, at least 5%) and a retrieved document naming the same party agree; a measured rise without a document stays inconclusive. Discount claims in documents are checked against like-for-like revenue per unit. Questions about churn, conversions, or other domains remain inconclusive rather than receiving an invented cause. Declining traffic competing with a supply explanation lowers confidence. The engine is not a general causal discovery or statistical inference system.
+The planner runs on local Ollama by default. `SANKET_LLM_PROVIDER=openai` sends the same schema-validated requests to a hosted OpenAI-compatible API instead; prompts then leave the machine and include source data. The planner sees each tool's new evidence claims and caveats rather than raw tool output, which keeps prompts within free-tier token limits. `auto` mode falls back visibly to deterministic analysis if the model is unavailable, rate-limited beyond a short wait, or its output fails validation. `ollama` mode fails the job instead. `deterministic` mode runs without an LLM. The deterministic explanation covers two scenarios. The supply scenario is supplier → stockout → product revenue. The margin scenario names a courier or supplier as a cause only when a measured price rise (fee per delivery or purchase unit cost, at least 5%) and a retrieved document naming the same party agree; a measured rise without a document stays inconclusive. Discount claims in documents are checked against like-for-like revenue per unit. Questions about churn, conversions, or other domains remain inconclusive rather than receiving an invented cause. Declining traffic competing with a supply explanation lowers confidence. The engine is not a general causal discovery or statistical inference system.
 
 ## Data and evidence
 

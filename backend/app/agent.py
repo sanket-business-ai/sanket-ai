@@ -1,6 +1,8 @@
+import copy
 import json
 import logging
 import re
+import time
 
 import httpx
 from pydantic import ValidationError
@@ -34,6 +36,7 @@ CHECKS = {
         ("get_supplier_costs", "Measure supplier purchase price changes and their effect on cost of goods."),
     ],
 }
+MODEL_NOTES = ("available", "coverage_issues", "missing", "limitation", "unpriced_deliveries", "period")
 ADVERSARIAL = {
     "supply": (
         "Adversarial pass: seek pricing, demand, campaign and operations counter-evidence.",
@@ -48,6 +51,8 @@ ADVERSARIAL = {
 
 def model_json(schema, messages):
     config = settings()
+    if config.llm_provider == "openai":
+        return hosted_json(schema, messages, config)
     with httpx.Client(timeout=config.model_timeout, trust_env=False) as client:
         response = client.post(
             config.ollama_url.rstrip("/") + "/api/chat",
@@ -62,6 +67,67 @@ def model_json(schema, messages):
         )
         response.raise_for_status()
         return schema.model_validate_json(response.json()["message"]["content"])
+
+
+def strict_schema(schema):
+    """Strict structured output requires every property to be listed as required."""
+    result = copy.deepcopy(schema.model_json_schema())
+    for node in [result, *result.get("$defs", {}).values()]:
+        if "properties" in node:
+            node["required"] = list(node["properties"])
+    return result
+
+
+def retry_after(response):
+    try:
+        return float(response.headers["retry-after"])
+    except KeyError, ValueError:
+        return None
+
+
+def model_view(name, result, evidence):
+    """The planner sees each tool's new evidence claims and caveats; raw output stays in the trail."""
+    view = {"tool": name, "evidence": [{"id": e["id"], "type": e["type"], "claim": e["claim"]} for e in evidence[:20]]}
+    if len(evidence) > 20:
+        view["more_evidence"] = len(evidence) - 20
+    view.update({key: result[key] for key in MODEL_NOTES if key in result})
+    return view
+
+
+def hosted_json(schema, messages, config):
+    """OpenAI-compatible chat completions with a JSON schema response format."""
+    response_schema = {"name": schema.__name__, "schema": schema.model_json_schema()}
+    if config.llm_strict_schema:
+        response_schema.update(schema=strict_schema(schema), strict=True)
+    body = {
+        "model": config.llm_model,
+        "messages": messages,
+        "temperature": 0,
+        # Reasoning models spend part of this budget before writing the JSON answer.
+        "max_completion_tokens": 4000,
+        "response_format": {"type": "json_schema", "json_schema": response_schema},
+    }
+    if config.llm_reasoning_effort:
+        body["reasoning_effort"] = config.llm_reasoning_effort
+    with httpx.Client(timeout=config.model_timeout, trust_env=False) as client:
+        for attempt in range(4):
+            response = client.post(
+                config.llm_base_url.rstrip("/") + "/chat/completions",
+                headers={"Authorization": f"Bearer {config.llm_api_key}"},
+                json=body,
+            )
+            # Free tiers rate-limit tokens per minute; wait briefly when the provider says how long.
+            wait = retry_after(response)
+            if response.status_code != 429 or attempt == 3 or wait is None or wait > 60:
+                break
+            logger.info("Model provider rate limit; retrying in %.0f s", wait)
+            time.sleep(wait)
+        response.raise_for_status()
+        try:
+            content = response.json()["choices"][0]["message"]["content"]
+        except (IndexError, TypeError) as error:
+            raise ValueError("Unexpected model response shape") from error
+        return schema.model_validate_json(content)
 
 
 def supply_conclusion(results, tools, challenged=False, question="", mode="question"):
@@ -563,13 +629,12 @@ def investigate(sources, question, mode, emit, challenged=False):
     emit("plan", "Inspect business signals, compare competing causes, and search for counter-evidence.", {})
 
     def run(name, rationale, query=""):
+        collected = len(tools.evidence)
         result = tools.call(name, query)
         results[name] = result
         executed.add(name)
         emit("tool", rationale, {"tool": name, "query": query, "result": result, "evidence_count": len(tools.evidence)})
-        messages.append(
-            {"role": "user", "content": json.dumps({"tool": name, "result": result, "evidence": tools.evidence[-8:]})}
-        )
+        messages.append({"role": "user", "content": json.dumps(model_view(name, result, tools.evidence[collected:]))})
 
     run("detect_anomalies", "Establish equal comparison windows and rank measurable business changes.")
     scenario = choose_scenario(question, mode, results["detect_anomalies"]["metrics"])
@@ -591,7 +656,7 @@ def investigate(sources, question, mode, emit, challenged=False):
                 run(step.tool, step.rationale, step.query)
         except (httpx.HTTPError, ValidationError, KeyError, ValueError) as error:
             logger.warning("Model unavailable or invalid: %s", type(error).__name__)
-            model_error = "The local model was unavailable or returned an invalid response."
+            model_error = "The language model was unavailable or returned an invalid response."
             if config.agent_mode == "ollama":
                 raise RuntimeError(model_error) from error
             using_model = False
@@ -647,8 +712,8 @@ def investigate(sources, question, mode, emit, challenged=False):
         },
         "scenario": scenario,
         "margin_bridge": results.get("get_margin_bridge"),
-        "engine": "ollama" if using_model else "deterministic",
-        "model": config.ollama_model if using_model else None,
+        "engine": ("hosted" if config.llm_provider == "openai" else "ollama") if using_model else "deterministic",
+        "model": config.model_name if using_model else None,
         "model_notice": model_error,
         "challenged": challenged,
         "coverage_issues": tools.coverage(),

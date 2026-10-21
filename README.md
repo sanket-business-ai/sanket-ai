@@ -34,6 +34,18 @@ docker compose -f compose.yaml -f compose.ollama.yaml logs -f pull-model
 
 The first model download needs several GB of disk and suitable RAM. Docker Ollama uses CPU by default. Set `SANKET_OLLAMA_MODEL` for your hardware; the model must support structured JSON responses. `auto` mode visibly falls back to deterministic analysis if the model is missing, offline, or invalid. Set `SANKET_AGENT_MODE=ollama` to require model reasoning, or `deterministic` for offline analysis. The optional Ollama image uses a floating tag; pin tested images to digests for deployment.
 
+To use a hosted OpenAI-compatible model instead of Ollama (for example Groq, Google Gemini or OpenRouter), set these in `.env` and restart the API and worker:
+
+```
+SANKET_LLM_PROVIDER=openai
+SANKET_LLM_BASE_URL=https://api.groq.com/openai/v1
+SANKET_LLM_API_KEY=<your key; never commit it>
+SANKET_LLM_MODEL=openai/gpt-oss-120b
+SANKET_LLM_REASONING_EFFORT=low
+```
+
+Investigation prompts, including business data from your sources, are then sent to that provider; check its data-use terms before uploading real data. Responses use strict JSON-schema output (set `SANKET_LLM_STRICT_SCHEMA=false` for providers that do not support it). Free tiers limit tokens per minute: SanketAI waits up to 60 seconds when the provider returns `Retry-After`, and otherwise falls back visibly to deterministic analysis. Evidence IDs in a model conclusion are validated, but numbers written in its prose are not; the margin bridge and evidence tab hold the calculated figures.
+
 ```powershell
 docker compose logs -f api worker
 docker compose down

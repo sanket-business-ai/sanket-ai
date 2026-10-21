@@ -235,10 +235,10 @@ export default function InvestigationView() {
       ) : report ? (
         <>
           <div className="mb-6 flex flex-wrap items-center gap-2">
-            <Badge variant={report.engine === 'ollama' ? 'default' : 'warning'}>
+            <Badge variant={report.engine === 'deterministic' ? 'warning' : 'default'}>
               <Sparkles size={12} />
-              {report.engine === 'ollama'
-                ? `Local agent · ${report.model}`
+              {report.engine !== 'deterministic'
+                ? `${report.engine === 'hosted' ? 'Hosted agent' : 'Local agent'} · ${report.model}`
                 : 'Deterministic evidence analysis'}
             </Badge>
             <Badge variant="outline">{report.confidence} evidence strength</Badge>

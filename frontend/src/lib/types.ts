@@ -5,6 +5,7 @@ export interface User {
 export interface System {
   agent_mode: string
   model: string
+  llm_provider: 'ollama' | 'openai'
   worker_online: boolean
   demo_enabled: boolean
   upload_max_bytes: number

@@ -35,9 +35,11 @@ Admin password reset: `cd backend; ..\.venv\Scripts\python.exe -m app.manage res
 **Investigation pipeline.** `POST /api/investigations` (`app/main.py`) calls `jobs.enqueue`. That function snapshots the currently active source IDs onto the `Investigation` row and returns 202. The worker (`app/worker.py`, `process_one`) claims the job with an atomic UPDATE that carries a lease token, then runs `agent.investigate`, committing each tool step as it goes. The frontend polls for progress. A crashed job is re-claimable after its 30-minute lease expires, with at most 3 attempts. The lease token stops a superseded worker from overwriting the result. The API never runs investigations inline.
 
 **Agent (`app/agent.py`) and tools (`app/analysis.py`).** The `Tools` class holds the allowlist of read-only analysis functions; `TOOL_NAMES` and the `SYSTEM` prompt must stay in sync with it. `SANKET_AGENT_MODE` selects the mode:
-- `ollama`: the model plans with schema-validated JSON (`app/schemas.py`).
+- `ollama`: the model plans with schema-validated JSON (`app/schemas.py`); the name is historical and also covers hosted providers.
 - `deterministic`: `fallback_conclusion` runs and no LLM is used.
-- `auto`: uses Ollama and visibly falls back to deterministic.
+- `auto`: uses the model and visibly falls back to deterministic.
+
+`SANKET_LLM_PROVIDER` picks the model backend: `ollama` (default, `ollama_*` settings) or `openai`, any OpenAI-compatible hosted API (`llm_*` settings, strict JSON schema, `Retry-After` waits; see `hosted_json`). Reports name the engine `ollama`, `hosted` or `deterministic`. The planner receives `model_view` summaries (new evidence claims and caveats), not raw tool results.
 
 A mandatory verification pass runs the core tools even if the planner stops early. `validate_conclusion` rejects hypotheses that cite evidence IDs which were never collected. Confidence is capped at medium. The deterministic path explains two scenarios: supplier → stockout → revenue (`supply_conclusion`), and courier/supplier price rise → contribution decline (`margin_conclusion`, which needs a measured rise and a document naming the same party). `choose_scenario` routes by question keywords, or by anomalies in discover mode. Other domains return inconclusive. This is intentional: don't make it "smarter" by inventing causes.
 
@@ -53,6 +55,6 @@ A mandatory verification pass runs the core tools even if the planner stops earl
 
 ## Testing notes
 
-- `backend/tests/conftest.py` forces deterministic mode and creates a fresh SQLite database per test under `.cache/test-dbs`. The `seeded` fixture loads the supply demo pack; `test_margin.py` loads the margin pack with `POST /api/demo {"pack": "margin"}`. Tests drive the worker synchronously by calling `process_one(factory)` and `monitor_due_actions(factory)`; they don't start a worker process. Model orchestration is tested by monkeypatching `agent.model_json`.
+- `backend/tests/conftest.py` forces deterministic mode and the Ollama provider (so a developer's hosted `.env` settings never reach tests) and creates a fresh SQLite database per test under `.cache/test-dbs`. The `seeded` fixture loads the supply demo pack; `test_margin.py` loads the margin pack with `POST /api/demo {"pack": "margin"}`. Tests drive the worker synchronously by calling `process_one(factory)` and `monitor_due_actions(factory)`; they don't start a worker process. Model orchestration is tested by monkeypatching `agent.model_json`.
 - Playwright (`frontend/playwright.config.ts`) starts `scripts/e2e-services.cjs`, which runs an isolated API and worker on port 8011 with a throwaway SQLite database in `.cache`. It also runs Vite on port 5174. It needs `.venv` to exist; set `E2E_PYTHON` to override the interpreter.
 - The demo pack (`app/demo.py`, synthetic "HimalayanMart") can only be loaded into an empty workspace. Production config rejects `demo_enabled`.

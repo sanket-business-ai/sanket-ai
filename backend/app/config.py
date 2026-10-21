@@ -16,8 +16,15 @@ class Settings(BaseSettings):
     admin_password: str = ""
     secure_cookies: bool = False
     session_hours: int = 12
+    llm_provider: str = "ollama"
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3:8b"
+    # Hosted OpenAI-compatible provider (Groq, Gemini, OpenRouter). Prompts include business data.
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    llm_model: str = ""
+    llm_reasoning_effort: str = ""
+    llm_strict_schema: bool = True
     agent_mode: str = "auto"
     max_agent_steps: int = 10
     model_timeout: int = 60
@@ -29,6 +36,13 @@ class Settings(BaseSettings):
     def validate_configuration(self):
         if self.agent_mode not in {"auto", "ollama", "deterministic"}:
             raise ValueError("agent_mode must be auto, ollama or deterministic")
+        if self.llm_provider not in {"ollama", "openai"}:
+            raise ValueError("llm_provider must be ollama or openai")
+        if self.llm_provider == "openai" and self.agent_mode != "deterministic":
+            if not (self.llm_base_url and self.llm_api_key and self.llm_model):
+                raise ValueError("The openai provider needs llm_base_url, llm_api_key and llm_model")
+            if not self.llm_base_url.startswith("https://"):
+                raise ValueError("llm_base_url must use HTTPS")
         if not 4 <= self.max_agent_steps <= 20:
             raise ValueError("max_agent_steps must be between 4 and 20")
         if self.admin_password and len(self.admin_password) < 12:
@@ -39,6 +53,10 @@ class Settings(BaseSettings):
             if self.demo_enabled:
                 raise ValueError("Disable demo seeding in production")
         return self
+
+    @property
+    def model_name(self):
+        return self.llm_model if self.llm_provider == "openai" else self.ollama_model
 
 
 @lru_cache
