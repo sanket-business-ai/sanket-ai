@@ -105,8 +105,8 @@ export function PageHeading({
   )
 }
 export function Status({ value }: { value: string }) {
-  const good = ['completed', 'succeeded', 'supported', 'monitoring'].includes(value)
-  const bad = ['failed', 'rejected'].includes(value)
+  const good = ['completed', 'succeeded', 'supported', 'monitoring', 'updated'].includes(value)
+  const bad = ['failed', 'rejected', 'error'].includes(value)
   return (
     <Badge
       variant={

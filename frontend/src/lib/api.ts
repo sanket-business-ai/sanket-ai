@@ -11,7 +11,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function send(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers)
   if (!(options.body instanceof FormData) && options.body)
     headers.set('Content-Type', 'application/json')
@@ -34,7 +34,23 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
       window.dispatchEvent(new Event('sanket:session-expired'))
     throw new ApiError(response.status, detail)
   }
+  return response
+}
+
+export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await send(path, options)
   return response.status === 204 ? (undefined as T) : response.json()
+}
+
+export async function download(path: string) {
+  const response = await send(path)
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const url = URL.createObjectURL(await response.blob())
+  const link = document.createElement('a')
+  link.href = url
+  link.download = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'download'
+  link.click()
+  URL.revokeObjectURL(url)
 }
 export function post<T>(path: string, body?: unknown) {
   return api<T>(path, {
