@@ -173,6 +173,24 @@ def validate_rows(rows, kind):
     return normalized
 
 
+def detect_kind(data, filename):
+    """Guess the evidence type: documents by extension, datasets by which contract their header satisfies."""
+    suffix = PurePath(filename).suffix.lower()
+    if suffix in {".pdf", ".txt", ".md"}:
+        return "document"
+    if suffix == ".csv":
+        header = next(csv.reader(io.StringIO(data[:65536].decode("utf-8-sig", errors="replace"))), [])
+    elif suffix == ".xlsx":
+        rows = xlsx_rows(data)
+        header = list(rows[0]) if rows else []
+    else:
+        return None
+    columns = {column.strip() for column in header}
+    matches = [kind for kind, contract in CONTRACTS.items() if set(contract) <= columns]
+    # The most specific contract wins when several fit.
+    return max(matches, key=lambda kind: len(CONTRACTS[kind]), default=None)
+
+
 def parse_upload(data, filename, kind):
     if not data:
         raise ValueError("File is empty")

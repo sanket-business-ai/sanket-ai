@@ -17,6 +17,8 @@ import { api, download, post } from '@/lib/api'
 import type { Contracts, DemoPack, DemoResult, Source, System } from '@/lib/types'
 import { dateTime, number } from '@/lib/utils'
 import { Empty, ErrorState, Loading, PageHeading } from '@/components/shared'
+import { BulkUpload } from '@/components/BulkUpload'
+import { ClearWorkspace } from '@/components/ClearWorkspace'
 import { ConnectSheet } from '@/components/ConnectSheet'
 import { Connections } from '@/components/Connections'
 import { DeleteSource } from '@/components/DeleteSource'
@@ -116,6 +118,9 @@ export default function Sources() {
         description="Your business evidence, in one place. Each upload becomes a preserved source version."
         action={
           <div className="flex flex-wrap gap-2">
+            {system.data?.demo_enabled && !!query.data?.length && (
+              <ClearWorkspace onCleared={setSuccess} />
+            )}
             <Button variant="outline" onClick={() => setConnecting(true)}>
               <Link2 />
               Connect Google Sheet
@@ -165,6 +170,7 @@ export default function Sources() {
           <ErrorState error={failure} />
         </div>
       )}
+      <BulkUpload onDone={setSuccess} />
       <Connections onMessage={setSuccess} />
       {query.isPending ? (
         <Loading />
