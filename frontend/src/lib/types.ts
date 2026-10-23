@@ -56,7 +56,12 @@ export interface Trail {
   sequence: number
   stage: string
   message: string
-  data: { tool?: string; result?: unknown; hypotheses?: { id: string; claim: string }[] }
+  data: {
+    tool?: string
+    result?: unknown
+    findings?: string[]
+    hypotheses?: { id: string; claim: string }[]
+  }
   timestamp: string
 }
 export interface Evidence {

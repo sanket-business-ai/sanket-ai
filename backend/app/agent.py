@@ -131,6 +131,26 @@ def fit(messages, limit):
     return head + tail
 
 
+def findings(result, evidence, limit=3):
+    """Up to three plain sentences on what a tool step found, for the live trail."""
+    lines = []
+    for item in evidence:
+        claim = item["claim"].strip()
+        if item["type"] == "fact":
+            # A document excerpt: show its title line, not the whole chunk.
+            claim = "Read " + claim.splitlines()[0].lstrip("# ").strip()
+        lines.append(claim if len(claim) <= 180 else claim[:177] + "…")
+        if len(lines) == limit:
+            break
+    if not lines:
+        lines.append(
+            "Nothing unusual found."
+            if result.get("available", True)
+            else "No data for this check: " + str(result.get("limitation", "the dataset is missing."))
+        )
+    return lines
+
+
 def evidence_index(evidence, first, limit):
     """Every collected evidence item as one short line, the ones the draft relies on first."""
     order = {eid: i for i, eid in enumerate(first)}
@@ -715,7 +735,12 @@ def investigate(sources, question, mode, emit, challenged=False):
         result = tools.call(name, query)
         results[name] = result
         executed.add(name)
-        emit("tool", rationale, {"tool": name, "query": query, "result": result, "evidence_count": len(tools.evidence)})
+        found = findings(result, tools.evidence[collected:])
+        emit(
+            "tool",
+            rationale,
+            {"tool": name, "query": query, "findings": found, "result": result, "evidence_count": len(tools.evidence)},
+        )
         messages.append({"role": "user", "content": json.dumps(model_view(name, result, tools.evidence[collected:]))})
 
     run("detect_anomalies", "Establish equal comparison windows and rank measurable business changes.")
@@ -748,8 +773,8 @@ def investigate(sources, question, mode, emit, challenged=False):
             run(name, reason, "supplier delay inventory demand price complaints" if name == "search_documents" else "")
     emit(
         "challenge",
-        "Compare supporting evidence with rival explanations; distinguish correlation from causality.",
-        {"coverage_issues": tools.coverage()},
+        f"Weighed {len(tools.evidence)} pieces of evidence against rival explanations, separating correlation from cause.",
+        {"coverage_issues": tools.coverage(), "findings": tools.coverage()[:3]},
     )
     if challenged:
         run("search_documents", *ADVERSARIAL[scenario])
@@ -826,7 +851,7 @@ def investigate(sources, question, mode, emit, challenged=False):
     }
     emit(
         "conclusion",
-        "Completed an evidence-backed report with explicit uncertainty.",
+        report["root_cause"].split(". ")[0].rstrip(".") + ".",
         {"confidence": report["confidence"], "engine": report["engine"]},
     )
     return report
