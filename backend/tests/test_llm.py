@@ -113,6 +113,23 @@ def test_schema_rejection_gets_one_corrective_retry(monkeypatch):
     assert len(sent) == 2, "only one corrective retry"
 
 
+def test_long_histories_are_trimmed_to_the_newest_messages():
+    messages = [{"role": "system", "content": "S" * 100}, {"role": "user", "content": "Q" * 100}] + [
+        {"role": "user", "content": f"{i}" * 1000} for i in range(10)
+    ]
+    trimmed = agent.fit(messages, 3500)
+    assert trimmed[:2] == messages[:2] and "omitted" in trimmed[2]["content"]
+    assert trimmed[3:] == messages[-3:]
+    assert agent.fit(messages, 100000) == messages
+
+
+def test_planner_view_shortens_long_document_excerpts():
+    evidence = [{"id": f"E{i}", "type": "fact", "claim": "x" * 1000} for i in range(15)]
+    view = agent.model_view("search_documents", {}, evidence)
+    assert len(view["evidence"]) == 12 and view["more_evidence"] == 3
+    assert all(len(e["claim"]) <= 281 for e in view["evidence"])
+
+
 def test_hosted_provider_configuration_is_validated():
     with pytest.raises(ValueError, match="needs llm_base_url"):
         Settings(llm_provider="openai", agent_mode="auto", llm_base_url="", llm_api_key="", llm_model="")

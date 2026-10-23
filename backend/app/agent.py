@@ -95,14 +95,36 @@ def retry_after(response):
 
 def model_view(name, result, evidence):
     """The planner sees each tool's new evidence claims and caveats; raw output stays in the trail."""
-    view = {"tool": name, "evidence": [{"id": e["id"], "type": e["type"], "claim": e["claim"]} for e in evidence[:20]]}
-    if len(evidence) > 20:
-        view["more_evidence"] = len(evidence) - 20
+    # Long document excerpts are shortened; the full text stays in the evidence list and the report.
+    view = {
+        "tool": name,
+        "evidence": [
+            {"id": e["id"], "type": e["type"], "claim": e["claim"][:280] + ("…" if len(e["claim"]) > 280 else "")}
+            for e in evidence[:12]
+        ],
+    }
+    if len(evidence) > 12:
+        view["more_evidence"] = len(evidence) - 12
     # Counts such as total_stockout_products=0 tell the planner "checked, nothing found" rather than "no data".
     view.update(
         {key: value for key, value in result.items() if key in MODEL_NOTES or isinstance(value, (bool, int, float))}
     )
     return view
+
+
+def fit(messages, limit):
+    """Keep the system prompt, the question and the newest messages within `limit` characters."""
+    head, tail = messages[:2], []
+    used = sum(len(m["content"]) for m in head)
+    for message in reversed(messages[2:]):
+        if used + len(message["content"]) > limit and tail:
+            break
+        tail.insert(0, message)
+        used += len(message["content"])
+    if len(tail) < len(messages) - 2:
+        note = "Earlier tool results were omitted to fit the model's size limit; their evidence IDs remain valid."
+        head = [*head, {"role": "user", "content": note}]
+    return head + tail
 
 
 def hosted_json(schema, messages, config):
@@ -112,7 +134,7 @@ def hosted_json(schema, messages, config):
         response_schema.update(schema=strict_schema(schema), strict=True)
     body = {
         "model": config.llm_model,
-        "messages": messages,
+        "messages": fit(messages, config.llm_max_prompt_chars),
         "temperature": 0,
         # Reasoning models spend part of this budget before writing the JSON answer.
         "max_completion_tokens": 4000,
