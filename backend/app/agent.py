@@ -113,18 +113,36 @@ def model_view(name, result, evidence):
 
 
 def fit(messages, limit):
-    """Keep the system prompt, the question and the newest messages within `limit` characters."""
+    """Keep the system prompt, the question and the newest messages within `limit` characters as sent."""
+
+    def size(message):
+        return len(json.dumps(message))  # escaped quotes and symbols are part of what the provider counts
+
     head, tail = messages[:2], []
-    used = sum(len(m["content"]) for m in head)
+    used = sum(size(m) for m in head) + 300  # room for the omission note and a corrective retry
     for message in reversed(messages[2:]):
-        if used + len(message["content"]) > limit and tail:
+        if used + size(message) > limit and tail:
             break
         tail.insert(0, message)
-        used += len(message["content"])
+        used += size(message)
     if len(tail) < len(messages) - 2:
         note = "Earlier tool results were omitted to fit the model's size limit; their evidence IDs remain valid."
         head = [*head, {"role": "user", "content": note}]
     return head + tail
+
+
+def evidence_index(evidence, first, limit):
+    """Every collected evidence item as one short line, the ones the draft relies on first."""
+    order = {eid: i for i, eid in enumerate(first)}
+    ranked = sorted(evidence, key=lambda e: order.get(e["id"], len(order)))
+    lines, used = [], 0
+    for item in ranked:
+        line = {"id": item["id"], "type": item["type"], "claim": item["claim"][:150]}
+        used += len(json.dumps(line))
+        if used > limit:
+            break
+        lines.append(line)
+    return lines
 
 
 def hosted_json(schema, messages, config):
@@ -738,13 +756,36 @@ def investigate(sources, question, mode, emit, challenged=False):
     conclusion = fallback_conclusion(results, tools, challenged, question, mode, scenario)
     if using_model:
         try:
-            messages.append(
+            # The conclusion sees all evidence as a compact index plus the deterministic draft, not the
+            # whole planning history, so it fits small context windows and free-tier limits.
+            draft = {
+                "root_cause": conclusion["root_cause"],
+                "causal_chain": conclusion["causal_chain"],
+                "hypotheses": [{k: h[k] for k in ("id", "claim", "status")} for h in conclusion["hypotheses"]],
+                "recommended_action": conclusion["recommended_action"],
+            }
+            cited = conclusion["evidence_ids"] + [
+                eid for h in conclusion["hypotheses"] for eid in h["supporting_evidence"] + h["contradicting_evidence"]
+            ]
+            brief = [
+                messages[0],
+                messages[1],
                 {
                     "role": "user",
-                    "content": "Conclude now using only collected evidence IDs. Include at least two competing hypotheses and explicitly list unknowns. Do not invent business impact calculations.",
-                }
-            )
-            conclusion = validate_conclusion(model_json(AgentConclusion, messages), tools.evidence)
+                    "content": json.dumps(
+                        {
+                            "evidence": evidence_index(tools.evidence, cited, config.llm_max_prompt_chars // 2),
+                            "coverage_issues": tools.coverage(),
+                            "deterministic_draft": draft,
+                        }
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": "Conclude now using only the evidence IDs listed above. The deterministic draft is a starting point: keep it where the evidence supports it and correct it where it does not. Include at least two competing hypotheses and explicitly list unknowns. Do not invent business impact calculations.",
+                },
+            ]
+            conclusion = validate_conclusion(model_json(AgentConclusion, brief), tools.evidence)
         except httpx.HTTPError, ValidationError, KeyError, ValueError:
             if config.agent_mode == "ollama":
                 raise RuntimeError("The model conclusion failed evidence validation")

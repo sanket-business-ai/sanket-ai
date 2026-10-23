@@ -171,11 +171,12 @@ def test_model_plans_with_margin_tools_and_verification_completes(margin, monkey
 
     def model(schema, messages):
         if schema is AgentStep:
+            results = [json.loads(m["content"]) for m in messages if m["content"].startswith('{"tool"')]
+            assert "result" not in results[0], "the planner sees evidence claims, not raw tool output"
             return next(steps)
-        results = [json.loads(m["content"]) for m in messages if m["content"].startswith('{"tool"')]
-        courier = next(r for r in results if r["tool"] == "get_delivery_costs")["evidence"][0]
-        assert "result" not in results[0], "the planner sees evidence claims, not raw tool output"
-        assert next(r for r in results if r["tool"] == "get_delivery_costs")["unpriced_deliveries"] == 0
+        brief = next(json.loads(m["content"]) for m in messages if m["content"].startswith('{"evidence"'))
+        assert brief["deterministic_draft"]["root_cause"], "the model sees the deterministic draft"
+        courier = next(e for e in brief["evidence"] if e["claim"].startswith("Peakline Parcel:"))
         return AgentConclusion.model_validate(
             {
                 "root_cause": "Courier fees rose; the rate notice and fee records agree.",
@@ -212,3 +213,43 @@ def test_tool_allowlist_matches_schema_and_prompt():
     assert all(name in SYSTEM for name in TOOL_NAMES)
     with pytest.raises(ValidationError):
         AgentStep(rationale="Run arbitrary code.", tool="run_sql")
+
+
+def test_zero_planning_steps_makes_one_model_call(margin, monkeypatch):
+    client, factory = margin
+    monkeypatch.setattr(settings(), "agent_mode", "ollama")
+    monkeypatch.setattr(settings(), "max_agent_steps", 0)
+    calls = []
+
+    def model(schema, messages):
+        calls.append(schema)
+        brief = json.loads(messages[2]["content"])
+        ids = [e["id"] for e in brief["evidence"][:2]]
+        return AgentConclusion.model_validate(
+            {
+                "root_cause": "Courier and supplier price rises cut contribution.",
+                "causal_chain": ["Price rises", "Lower contribution"],
+                "evidence_ids": ids,
+                "confidence": "medium",
+                "hypotheses": [
+                    {
+                        "id": f"H{i}",
+                        "claim": f"Competing cost explanation {i}",
+                        "status": "inconclusive",
+                        "supporting_evidence": [],
+                        "contradicting_evidence": [],
+                        "explanation": "Observational.",
+                    }
+                    for i in (1, 2)
+                ],
+                "unknowns": ["Invoices are not reconciled."],
+                "recommended_action": "Compare courier rates before renewing the contract.",
+            }
+        )
+
+    monkeypatch.setattr(agent, "model_json", model)
+    job = run_investigation(client, factory)
+    assert calls == [AgentConclusion], "no planning calls, one conclusion call"
+    tools = [item["data"]["tool"] for item in job["trail"] if item["stage"] == "tool"]
+    assert {"get_margin_bridge", "get_delivery_costs", "get_supplier_costs"} <= set(tools)
+    assert job["report"]["engine"] == "ollama"

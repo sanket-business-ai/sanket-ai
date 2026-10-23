@@ -25,8 +25,9 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_reasoning_effort: str = ""
     llm_strict_schema: bool = True
-    # Free tiers cap tokens per request; about 3.2 characters per token keeps this under Groq's 8,000.
-    llm_max_prompt_chars: int = 20000
+    # Free tiers cap tokens per request; Groq counts about 3.2 encoded characters per token, so 18,000
+    # characters stays under its 8,000-token limit.
+    llm_max_prompt_chars: int = 18000
     agent_mode: str = "auto"
     max_agent_steps: int = 10
     model_timeout: int = 60
@@ -45,8 +46,9 @@ class Settings(BaseSettings):
                 raise ValueError("The openai provider needs llm_base_url, llm_api_key and llm_model")
             if not self.llm_base_url.startswith("https://"):
                 raise ValueError("llm_base_url must use HTTPS")
-        if not 4 <= self.max_agent_steps <= 20:
-            raise ValueError("max_agent_steps must be between 4 and 20")
+        # 0 skips model planning: the tools run deterministically and the model only writes the conclusion.
+        if not 0 <= self.max_agent_steps <= 20:
+            raise ValueError("max_agent_steps must be between 0 and 20")
         if self.admin_password and len(self.admin_password) < 12:
             raise ValueError("Admin password must have at least 12 characters")
         if self.environment == "production":
