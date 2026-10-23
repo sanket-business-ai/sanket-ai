@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_reasoning_effort: str = ""
     llm_strict_schema: bool = True
+    # Free tiers cap tokens per request; about 3.2 characters per token keeps this under Groq's 8,000.
+    llm_max_prompt_chars: int = 20000
     agent_mode: str = "auto"
     max_agent_steps: int = 10
     model_timeout: int = 60
