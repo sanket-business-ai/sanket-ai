@@ -117,10 +117,11 @@ def test_long_histories_are_trimmed_to_the_newest_messages():
     messages = [{"role": "system", "content": "S" * 100}, {"role": "user", "content": "Q" * 100}] + [
         {"role": "user", "content": f"{i}" * 1000} for i in range(10)
     ]
-    trimmed = agent.fit(messages, 3500)
+    trimmed = agent.fit(messages, 4000)
     assert trimmed[:2] == messages[:2] and "omitted" in trimmed[2]["content"]
     assert trimmed[3:] == messages[-3:]
     assert agent.fit(messages, 100000) == messages
+    assert len(json.dumps(agent.fit(messages, 4000))) <= 4000
 
 
 def test_planner_view_shortens_long_document_excerpts():
