@@ -104,7 +104,9 @@ class Tools:
                 "anomaly": delta is not None and delta <= -10,
             }
             metric["evidence_id"] = self.cite(
-                f"{label}: {cur:,.2f} vs {prev:,.2f} in equal 28-day windows.",
+                f"{label}: NPR {cur:,.0f} vs NPR {prev:,.0f} in equal 28-day windows."
+                if unit == "NPR"
+                else f"{label}: {cur:,} vs {prev:,} in equal 28-day windows.",
                 ["orders"],
                 cur,
                 unit,
@@ -310,7 +312,7 @@ class Tools:
                     "first_date": min(item["dates"]),
                     "last_date": max(item["dates"]),
                     "evidence_id": self.cite(
-                        f"{product_id} recorded zero stock on {item['stockout_days']} days.",
+                        f"{self.catalog.get(product_id, {}).get('name', product_id)} ({product_id}) recorded zero stock on {item['stockout_days']} days.",
                         ["inventory"],
                         item["stockout_days"],
                         "days",
@@ -338,7 +340,7 @@ class Tools:
                         **row,
                         "delay_days": days,
                         "evidence_id": self.cite(
-                            f"{row['name']} ({row['id']}), product {row['product_id']}: shipment {days} days late.",
+                            f"{row['name']} ({row['id']}), {self.catalog.get(row['product_id'], {}).get('name', row['product_id'])}: shipment {days} days late.",
                             ["suppliers"],
                             days,
                             "days",
