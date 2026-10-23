@@ -153,3 +153,7 @@ This revokes existing sessions. Changing the bootstrap environment password alon
 Current boundaries: document retrieval is lexical; model reasoning is observational and can be wrong; confidence is qualitative, not a probability; the deterministic explanation covers two scenarios (supplier delay → stockout → revenue, and courier/supplier price rises → contribution) and leaves other domains inconclusive. Revenue difference is not automatically attributable loss. External CRM/email/workflow connectors, vector search, a separate MCP server, OCR, public signup, and multi-tenant access are deferred. Scheduled outcome checks need a complete newer 28-day window and do not prove action causality.
 
 See [architecture and tradeoffs](docs/architecture.md) and the downloaded [Vercel React skill](docs/skills/vercel-react-best-practices/SKILL.md). The Vercel skill was sourced from the official repository through the [skills.sh listing](https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices); two relevant rule files are included under `docs/skills/`.
+
+## License
+
+SanketAI is open source under the [MIT License](LICENSE).
