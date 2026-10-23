@@ -165,3 +165,24 @@ def test_sources_used_by_unfinished_investigations_cannot_be_deleted(seeded):
     assert response.status_code == 409 and "still running" in response.json()["detail"]
     assert client.get("/api/sources/missing/usage").status_code == 404
     assert client.post("/api/sources/missing/delete").status_code == 404
+
+
+def test_types_are_detected_from_headers_and_extensions():
+    from app import gadgets
+    from app.ingestion import detect_kind
+
+    _, packs = gadgets.generate()
+    for name, data in packs["2_margin_squeeze"]["csv"].items():
+        assert detect_kind(data, "renamed.csv") == name.rsplit("_", 1)[1].removesuffix(".csv")
+    assert detect_kind(b"anything", "note.pdf") == detect_kind(b"x", "a.md") == "document"
+    assert detect_kind(b"colour,size\nred,M\n", "mystery.csv") is None
+    assert detect_kind(b"x", "photo.png") is None
+
+
+def test_auto_upload_stores_the_detected_type(workspace):
+    client, _ = workspace
+    data = b"id,segment,location,signup_date\nC1,New,Kathmandu,2026-01-01\n"
+    response = client.post("/api/sources", data={"kind": "auto"}, files={"file": ("export (3).csv", data)})
+    assert response.status_code == 201 and response.json()["kind"] == "customers"
+    unknown = client.post("/api/sources", data={"kind": "auto"}, files={"file": ("x.csv", b"a,b\n1,2\n")})
+    assert unknown.status_code == 422 and "Choose its type" in unknown.json()["detail"]

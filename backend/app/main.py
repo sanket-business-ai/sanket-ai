@@ -36,7 +36,15 @@ from .db import (
     now,
 )
 from .demo import seed_demo
-from .ingestion import CONTRACTS, OPTIONAL_COLUMNS, active_sources, export_csv, export_text, store_source
+from .ingestion import (
+    CONTRACTS,
+    OPTIONAL_COLUMNS,
+    active_sources,
+    detect_kind,
+    export_csv,
+    export_text,
+    store_source,
+)
 from .jobs import enqueue
 from .schemas import (
     ConnectionRequest,
@@ -345,6 +353,10 @@ async def upload(
     if len(data) > settings().upload_max_bytes:
         raise HTTPException(413, "File exceeds the 10 MB upload limit")
     try:
+        if kind == "auto":
+            kind = await run_in_threadpool(detect_kind, data, file.filename or "upload")
+            if not kind:
+                raise ValueError("Could not tell which type this file is. Choose its type and upload it again.")
         source, created = await run_in_threadpool(store_source, db, data, file.filename or "upload", kind)
         if created:
             db.add(
