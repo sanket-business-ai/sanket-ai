@@ -331,11 +331,11 @@ function Shell({ user, themeControl }: { user: User; themeControl: ReactNode }) 
             {[
               [
                 'Connect evidence',
-                'Upload 56+ days of business CSVs or Excel files and readable PDF reports.',
+                'Upload 56+ days of business CSVs or Excel files, or connect a Google Sheet. Add supplier letters, complaint logs and notes as PDF, text or Markdown.',
               ],
               [
                 'Let the agent investigate',
-                'It compares periods, tests competing hypotheses, and retrieves supporting and contradictory evidence.',
+                'It compares the latest 28 days with the 28 days before, tests competing hypotheses, and searches your documents by meaning for supporting and contradictory evidence.',
               ],
               [
                 'Challenge the conclusion',
@@ -357,9 +357,26 @@ function Shell({ user, themeControl }: { user: User; themeControl: ReactNode }) 
               </li>
             ))}
           </ol>
+          <div>
+            <h3 className="text-sm font-semibold">What it can explain</h3>
+            <ul className="mt-2 space-y-2 text-sm leading-6 text-muted-foreground">
+              <li>
+                <span className="font-medium text-foreground">Sales drops:</span> supplier delays
+                that caused stockouts and lost sales.
+              </li>
+              <li>
+                <span className="font-medium text-foreground">Falling margin:</span> courier or
+                supplier price rises, with a chart of where the margin went.
+              </li>
+              <li>
+                <span className="font-medium text-foreground">Other questions:</span> the AI still
+                investigates, but no measured explanation is built in, so check the evidence.
+              </li>
+            </ul>
+          </div>
           <p className="rounded-lg bg-muted p-3 text-xs leading-5 text-muted-foreground">
             <Sparkles className="mr-2 inline size-4" />
-            Local model reasoning is labeled separately from deterministic analysis. Observational
+            AI model reasoning is labeled separately from deterministic analysis. Observational
             evidence cannot prove causality on its own.
           </p>
         </DialogContent>

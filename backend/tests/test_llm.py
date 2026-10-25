@@ -1,0 +1,199 @@
+import json
+
+import httpx
+import pytest
+
+from app import agent
+from app.config import Settings, settings
+from app.schemas import AgentStep
+
+
+def hosted(monkeypatch, handler):
+    real = httpx.Client
+    monkeypatch.setattr(agent.httpx, "Client", lambda **kwargs: real(transport=httpx.MockTransport(handler), **kwargs))
+    for key, value in {
+        "llm_provider": "openai",
+        "llm_base_url": "https://llm.example/v1/",
+        "llm_api_key": "test-key",
+        "llm_model": "test-model",
+        "llm_reasoning_effort": "low",
+    }.items():
+        monkeypatch.setattr(settings(), key, value)
+
+
+def test_hosted_provider_requests_schema_json(monkeypatch):
+    seen = {}
+
+    def handler(request):
+        seen.update(url=str(request.url), auth=request.headers["authorization"], body=json.loads(request.content))
+        content = json.dumps({"rationale": "Check courier fees first.", "tool": "get_delivery_costs"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    hosted(monkeypatch, handler)
+    step = agent.model_json(AgentStep, [{"role": "user", "content": "Plan the investigation."}])
+    assert step.tool == "get_delivery_costs"
+    assert seen["url"] == "https://llm.example/v1/chat/completions"
+    assert seen["auth"] == "Bearer test-key"
+    assert seen["body"]["model"] == "test-model" and seen["body"]["reasoning_effort"] == "low"
+    schema = seen["body"]["response_format"]["json_schema"]
+    assert schema["name"] == "AgentStep" and schema["strict"] is True
+    assert set(schema["schema"]["required"]) == {"rationale", "hypotheses", "tool", "query"}
+    assert schema["schema"]["additionalProperties"] is False
+    assert settings().model_name == "test-model"
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(200, json={"choices": []}),
+        httpx.Response(200, json={"choices": [{"message": {"content": '{"tool": "run_sql"}'}}]}),
+        httpx.Response(429, json={"error": {"message": "rate limited"}}),
+    ],
+)
+def test_hosted_provider_failures_raise_fallback_errors(monkeypatch, response):
+    hosted(monkeypatch, lambda request: response)
+    with pytest.raises((ValueError, httpx.HTTPError)):
+        agent.model_json(AgentStep, [{"role": "user", "content": "Plan the investigation."}])
+
+
+def test_hosted_provider_waits_for_rate_limits(monkeypatch):
+    responses = iter(
+        [
+            httpx.Response(429, headers={"retry-after": "2"}, json={"error": {"message": "rate limited"}}),
+            httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": '{"rationale": "Plan the next step.", "tool": "finish"}'}}]},
+            ),
+        ]
+    )
+    waits = []
+    hosted(monkeypatch, lambda request: next(responses))
+    monkeypatch.setattr(agent.time, "sleep", waits.append)
+    assert agent.model_json(AgentStep, [{"role": "user", "content": "Plan the investigation."}]).tool == "finish"
+    assert waits == [2.0]
+
+
+def test_schema_rejection_gets_one_corrective_retry(monkeypatch):
+    rejected = httpx.Response(
+        400,
+        json={
+            "error": {
+                "code": "json_validate_failed",
+                "message": "'/rationale' does not validate with maxLength: got 710, want 500",
+            }
+        },
+    )
+    accepted = httpx.Response(
+        200,
+        json={
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"rationale": "Check courier fees.", "hypotheses": [], "tool": "finish", "query": ""}'
+                    }
+                }
+            ]
+        },
+    )
+    replies, sent = [rejected, accepted], []
+
+    def handler(request):
+        sent.append(json.loads(request.content)["messages"])
+        return replies.pop(0)
+
+    hosted(monkeypatch, handler)
+    messages = [{"role": "user", "content": "Plan the investigation."}]
+    assert agent.model_json(AgentStep, messages).tool == "finish"
+    assert len(sent) == 2 and "maxLength" in sent[1][-1]["content"]
+    assert messages == [{"role": "user", "content": "Plan the investigation."}], "caller history is unchanged"
+
+    replies[:], sent[:] = [rejected, rejected, accepted], []
+    with pytest.raises(httpx.HTTPStatusError):
+        agent.model_json(AgentStep, messages)
+    assert len(sent) == 2, "only one corrective retry"
+
+
+def test_long_histories_are_trimmed_to_the_newest_messages():
+    messages = [{"role": "system", "content": "S" * 100}, {"role": "user", "content": "Q" * 100}] + [
+        {"role": "user", "content": f"{i}" * 1000} for i in range(10)
+    ]
+    trimmed = agent.fit(messages, 4000)
+    assert trimmed[:2] == messages[:2] and "omitted" in trimmed[2]["content"]
+    assert trimmed[3:] == messages[-3:]
+    assert agent.fit(messages, 100000) == messages
+    assert len(json.dumps(agent.fit(messages, 4000))) <= 4000
+
+
+def test_planner_view_shortens_long_document_excerpts():
+    evidence = [{"id": f"E{i}", "type": "fact", "claim": "x" * 1000} for i in range(15)]
+    view = agent.model_view("search_documents", {}, evidence)
+    assert len(view["evidence"]) == 12 and view["more_evidence"] == 3
+    assert all(len(e["claim"]) <= 281 for e in view["evidence"])
+
+
+def test_hosted_provider_configuration_is_validated():
+    with pytest.raises(ValueError, match="needs llm_base_url"):
+        Settings(llm_provider="openai", agent_mode="auto", llm_base_url="", llm_api_key="", llm_model="")
+    with pytest.raises(ValueError, match="HTTPS"):
+        Settings(llm_provider="openai", agent_mode="auto", llm_base_url="http://x", llm_api_key="k", llm_model="m")
+    with pytest.raises(ValueError, match="llm_provider"):
+        Settings(llm_provider="mystery")
+    assert Settings(llm_provider="openai", agent_mode="deterministic", llm_api_key="").agent_mode == "deterministic"
+
+
+def rotation(monkeypatch, first_response):
+    """A first hosted model answering with `first_response` and a second model that plans `finish`."""
+    calls = []
+
+    def handler(request):
+        model = json.loads(request.content)["model"]
+        calls.append(model)
+        if model == "test-model":
+            return first_response
+        content = json.dumps({"rationale": "Answered by the backup.", "tool": "finish"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    hosted(monkeypatch, handler)
+    monkeypatch.setattr(settings(), "llm_fallback_models", "backup-model, test-model")
+    return calls
+
+
+def plan():
+    return agent.model_json(AgentStep, [{"role": "user", "content": "Plan the investigation."}])
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(429, headers={"retry-after": "7200"}, json={"error": {"message": "daily limit reached"}}),
+        httpx.Response(503, json={"error": {"message": "over capacity"}}),
+    ],
+)
+def test_an_unavailable_model_hands_over_to_the_next(monkeypatch, response):
+    calls = rotation(monkeypatch, response)
+    assert plan().rationale == "Answered by the backup."
+    assert calls == ["test-model", "backup-model"]
+    assert agent.ANSWERED.get() == ("hosted", "backup-model")
+
+
+def test_an_exhausted_model_is_skipped_until_its_limit_resets(monkeypatch):
+    calls = rotation(monkeypatch, httpx.Response(429, headers={"retry-after": "7200"}, json={}))
+    plan()
+    plan()
+    assert calls == ["test-model", "backup-model", "backup-model"], "the daily-limited model is not retried"
+
+
+def test_a_bad_request_does_not_switch_models(monkeypatch):
+    calls = rotation(monkeypatch, httpx.Response(400, json={"error": {"message": "bad schema"}}))
+    with pytest.raises(httpx.HTTPStatusError):
+        plan()
+    assert calls == ["test-model"]
+
+
+def test_when_every_model_is_exhausted_the_call_fails_for_the_deterministic_fallback(monkeypatch):
+    hosted(monkeypatch, lambda request: httpx.Response(429, headers={"retry-after": "7200"}, json={}))
+    monkeypatch.setattr(settings(), "llm_fallback_models", "backup-model")
+    with pytest.raises(httpx.HTTPStatusError):
+        plan()
+    with pytest.raises(ValueError, match="rate limit"):
+        plan()

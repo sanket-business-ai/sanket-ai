@@ -7,7 +7,6 @@ import zipfile
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import PurePath
-import httpx
 
 from defusedxml import ElementTree
 from pypdf import PdfReader
@@ -15,30 +14,14 @@ from sqlalchemy import select
 
 from .config import settings
 from .db import Source
+from .retrieval import embed
 
 
 
 def embed_text(text: str) -> list[float] | None:
-    """Return a local Ollama embedding, or None if unavailable."""
-    try:
-        with httpx.Client(timeout=10, trust_env=False) as client:
-            response = client.post(
-                settings().ollama_url.rstrip("/") + "/api/embed",
-                json={
-                    "model": "bge-m3",
-                    "input": text,
-                },
-            )
-            response.raise_for_status()
-            embeddings = response.json().get("embeddings", [])
-
-            if embeddings and embeddings[0]:
-                return embeddings[0]
-
-    except (httpx.HTTPError, ValueError, KeyError, IndexError):
-        pass
-
-    return None
+    """Return a local embedding, or None when the configured model is unavailable."""
+    vectors = embed([text])
+    return vectors[0] if vectors else None
 
 
 CONTRACTS = {
@@ -64,8 +47,19 @@ CONTRACTS = {
     "marketing": {"date": "date", "channel": "text", "spend": "money", "impressions": "integer", "clicks": "integer"},
     "customers": {"id": "id", "segment": "text", "location": "text", "signup_date": "date"},
     "expenses": {"date": "date", "category": "text", "amount": "money"},
+    "purchases": {
+        "date": "date",
+        "supplier_id": "id",
+        "product_id": "id",
+        "quantity": "positive_integer",
+        "unit_cost": "money",
+    },
 }
+# Columns that may be left out of the header entirely; blank values are stored as null.
+OPTIONAL_COLUMNS = {"deliveries": {"courier": "optional_text", "fee": "optional_money"}}
 STATUSES = {"delivered", "completed", "cancelled", "returned", "pending", "shipped"}
+# Document chunks are CHUNK_SIZE characters long and start every CHUNK_STEP characters, so they overlap.
+CHUNK_STEP, CHUNK_SIZE = 1000, 1200
 
 
 def parse_date(value):
@@ -123,12 +117,13 @@ def xlsx_rows(data):
 
 
 def validate_rows(rows, kind):
-    contract = CONTRACTS[kind]
     if not rows:
         raise ValueError("Dataset is empty")
     if len(rows) > settings().max_rows:
         raise ValueError(f"Maximum {settings().max_rows:,} rows per file")
-    missing = set(contract) - set(rows[0])
+    optional = {column: field for column, field in OPTIONAL_COLUMNS.get(kind, {}).items() if column in rows[0]}
+    contract = {**CONTRACTS[kind], **optional}
+    missing = set(CONTRACTS[kind]) - set(rows[0])
     if missing:
         raise ValueError("Missing required columns: " + ", ".join(sorted(missing)))
     normalized = []
@@ -138,14 +133,14 @@ def validate_rows(rows, kind):
         for column, field_type in contract.items():
             value = str(row.get(column, "") or "").strip()
             try:
-                if field_type == "optional_date" and not value:
+                if field_type.startswith("optional_") and not value:
                     result[column] = None
                     continue
                 if not value:
                     raise ValueError("value is required")
                 if "date" in field_type:
                     value = parse_date(value)
-                elif field_type in {"money", "integer", "positive_integer"}:
+                elif field_type in {"money", "optional_money", "integer", "positive_integer"}:
                     numeric = Decimal(value)
                     if (
                         not numeric.is_finite()
@@ -187,6 +182,39 @@ def validate_rows(rows, kind):
     return normalized
 
 
+def detect_kind(data, filename):
+    """Guess the evidence type: documents by extension, datasets by which contract their header satisfies."""
+    suffix = PurePath(filename).suffix.lower()
+    if suffix in {".pdf", ".txt", ".md"}:
+        return "document"
+    if suffix == ".csv":
+        header = next(csv.reader(io.StringIO(data[:65536].decode("utf-8-sig", errors="replace"))), [])
+    elif suffix == ".xlsx":
+        rows = xlsx_rows(data)
+        header = list(rows[0]) if rows else []
+    else:
+        return None
+    columns = {column.strip() for column in header}
+    matches = [kind for kind, contract in CONTRACTS.items() if set(contract) <= columns]
+    # The most specific contract wins when several fit.
+    return max(matches, key=lambda kind: len(CONTRACTS[kind]), default=None)
+
+
+def with_embeddings(chunks):
+    """Chunks with an embedding each, or unchanged when the model is off or unavailable.
+
+    Embeddings make search find meaning, not only shared words; without them search uses keywords.
+    """
+    vectors = (
+        [embed_text(chunks[0]["text"])]
+        if len(chunks) == 1
+        else embed([chunk["text"] for chunk in chunks])
+    )
+    if not vectors:
+        return chunks
+    return [{**chunk, "embedding": [round(value, 5) for value in vector]} for chunk, vector in zip(chunks, vectors)]
+
+
 def parse_upload(data, filename, kind):
     if not data:
         raise ValueError("File is empty")
@@ -205,21 +233,13 @@ def parse_upload(data, filename, kind):
         chunks = []
         for page, text in pages:
             text = text.replace("\x00", "").strip()
-            for start in range(0, len(text), 1000):
-                chunk_text = text[start:start + 1200]
-
-                chunks.append({
-    "page": page,
-    "chunk": len(chunks) + 1,
-    "text": chunk_text,
-    "embedding": embed_text(chunk_text),
-})
-
+            for start in range(0, len(text), CHUNK_STEP):
+chunks.append({"page": page, "chunk": len(chunks) + 1, "text": text[start : start + CHUNK_SIZE]})
         if not chunks:
             raise ValueError("No readable text found. Scanned PDFs require OCR first.")
         if len(chunks) > 500:
             raise ValueError("Document exceeds 500 text chunks")
-        return {"chunks": chunks}, len(chunks)
+        return {"chunks": with_embeddings(chunks)}, len(chunks)
     if kind not in CONTRACTS:
         raise ValueError("Unknown dataset type")
     if suffix == ".csv":
@@ -242,10 +262,43 @@ def parse_upload(data, filename, kind):
     return {"rows": rows}, len(rows)
 
 
+def safe_cell(value):
+    # Spreadsheet apps run cells starting with these characters as formulas.
+    text = "" if value is None else str(value)
+    return "'" + text if text.startswith(("=", "+", "-", "@", "\t", "\r")) else text
+
+
+def export_csv(kind, rows):
+    """The stored, normalized snapshot of a dataset as CSV."""
+    columns = list(CONTRACTS[kind]) + [
+        column for column in OPTIONAL_COLUMNS.get(kind, {}) if rows and column in rows[0]
+    ]
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(columns)
+    writer.writerows([safe_cell(row.get(column)) for column in columns] for row in rows)
+    return buffer.getvalue()
+
+
+def export_text(chunks):
+    """The text SanketAI extracted from a document, with chunk overlaps removed."""
+    pages = {}
+    for chunk in chunks:
+        pages.setdefault(chunk["page"], []).append(chunk["text"])
+    parts = ["".join(text[:CHUNK_STEP] for text in texts[:-1]) + texts[-1] for texts in pages.values()]
+    if len(pages) == 1:
+        return parts[0]
+    return "\n\n".join(f"[Page {page}]\n{text}" for page, text in zip(pages, parts))
+
+
 def store_source(db, data, filename, kind):
     checksum = hashlib.sha256(kind.encode() + b"\0" + data).hexdigest()
     existing = db.scalar(select(Source).where(Source.checksum == checksum))
     if existing:
+        # Uploading a document again embeds it if it was stored while the embedding model was unavailable.
+        chunks = existing.content["chunks"] if kind == "document" else []
+        if chunks and not all(chunk.get("embedding") for chunk in chunks):
+            existing.content = {**existing.content, "chunks": with_embeddings(chunks)}
         return existing, False
     content, count = parse_upload(data, filename, kind)
     name = filename.replace("\\", "/").split("/")[-1][:200]

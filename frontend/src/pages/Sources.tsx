@@ -5,17 +5,26 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  Link2,
   Loader2,
   Plus,
   Search,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UploadCloud,
 } from 'lucide-react'
 import { api, post } from '@/lib/api'
 import type { DocumentSearchResponse, Source, System } from '@/lib/types'
+import { download } from '@/lib/api'
+import type { Contracts, DemoPack, DemoResult } from '@/lib/types'
 import { dateTime, number } from '@/lib/utils'
 import { Empty, ErrorState, Loading, PageHeading } from '@/components/shared'
+import { BulkUpload } from '@/components/BulkUpload'
+import { ClearWorkspace } from '@/components/ClearWorkspace'
+import { ConnectSheet } from '@/components/ConnectSheet'
+import { Connections } from '@/components/Connections'
+import { DeleteSource } from '@/components/DeleteSource'
 import { SourcePreview } from '@/components/SourcePreview'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,6 +40,7 @@ const kinds = [
   'marketing',
   'customers',
   'expenses',
+  'purchases',
   'document',
 ]
 export default function Sources() {
@@ -39,6 +49,8 @@ export default function Sources() {
   const [kind, setKind] = useState('orders')
   const [file, setFile] = useState<File | null>(null)
   const [source, setSource] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<Source | null>(null)
+  const [connecting, setConnecting] = useState(false)
   const [allVersions, setAllVersions] = useState(false)
   const [success, setSuccess] = useState('')
   const [searchText, setSearchText] = useState('')
@@ -46,7 +58,7 @@ export default function Sources() {
   const query = useQuery({ queryKey: ['sources'], queryFn: () => api<Source[]>('/sources') })
   const contracts = useQuery({
     queryKey: ['contracts'],
-    queryFn: () => api<Record<string, Record<string, string>>>('/sources/contracts'),
+    queryFn: () => api<Contracts>('/sources/contracts'),
     staleTime: Infinity,
   })
   const system = useQuery({ queryKey: ['system'], queryFn: () => api<System>('/system') })
@@ -69,15 +81,19 @@ export default function Sources() {
     },
   })
   const demo = useMutation({
-    mutationFn: () => post('/demo'),
-    onSuccess: () => {
+    mutationFn: (pack: DemoPack) => post<DemoResult>('/demo', { pack }),
+    onSuccess: (data) => {
       refresh()
-      setSuccess('HimalayanMart synthetic evidence pack loaded: 8 datasets and 4 documents.')
+      setSuccess(
+        `HimalayanMart synthetic ${data.pack === 'margin' ? 'margin ' : ''}evidence pack loaded: ${data.datasets} datasets and ${data.documents} documents.`,
+      )
     },
   })
   const documentSearch = useMutation({
     mutationFn: () => post<DocumentSearchResponse>('/sources/search', { query: searchText.trim() }),
   })
+  const save = useMutation({ mutationFn: (id: string) => download(`/sources/${id}/download`) })
+  const failure = demo.error ?? save.error
   function refresh() {
     client.invalidateQueries({ queryKey: ['sources'] })
     client.invalidateQueries({ queryKey: ['dashboard'] })
@@ -87,7 +103,8 @@ export default function Sources() {
     upload.mutate()
   }
   function template() {
-    const columns = Object.keys(contracts.data?.[kind] || {})
+    const contract = contracts.data?.[kind]
+    const columns = contract ? [...contract.required, ...contract.optional] : []
     const blob = new Blob([columns.join(',') + '\n'], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -107,15 +124,24 @@ export default function Sources() {
         title="Data sources"
         description="Your business evidence, in one place. Each upload becomes a preserved source version."
         action={
-          <Button
-            onClick={() => {
-              upload.reset()
-              setOpen(true)
-            }}
-          >
-            <Plus />
-            Upload evidence
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {system.data?.demo_enabled && !!query.data?.length && (
+              <ClearWorkspace onCleared={setSuccess} />
+            )}
+            <Button variant="outline" onClick={() => setConnecting(true)}>
+              <Link2 />
+              Connect Google Sheet
+            </Button>
+            <Button
+              onClick={() => {
+                upload.reset()
+                setOpen(true)
+              }}
+            >
+              <Plus />
+              Upload evidence
+            </Button>
+          </div>
         }
       />
       <section className="mb-7 grid gap-4 sm:grid-cols-3">
@@ -146,9 +172,9 @@ export default function Sources() {
           {success}
         </p>
       )}
-      {demo.error && (
+      {failure && (
         <div className="mb-5">
-          <ErrorState error={demo.error} />
+          <ErrorState error={failure} />
         </div>
       )}
       <Card className="mb-7">
@@ -237,6 +263,8 @@ export default function Sources() {
           )}
         </CardContent>
       </Card>
+      <BulkUpload onDone={setSuccess} />
+      <Connections onMessage={setSuccess} />
       {query.isPending ? (
         <Loading />
       ) : query.error ? (
@@ -252,10 +280,32 @@ export default function Sources() {
                 Upload your first file
               </Button>
               {system.data?.demo_enabled && (
-                <Button variant="outline" disabled={demo.isPending} onClick={() => demo.mutate()}>
-                  {demo.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}Load
-                  HimalayanMart demo
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={demo.isPending}
+                    onClick={() => demo.mutate('supply')}
+                  >
+                    {demo.isPending && demo.variables === 'supply' ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <Sparkles />
+                    )}
+                    Load HimalayanMart demo
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={demo.isPending}
+                    onClick={() => demo.mutate('margin')}
+                  >
+                    {demo.isPending && demo.variables === 'margin' ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <Sparkles />
+                    )}
+                    Load margin demo
+                  </Button>
+                </>
               )}
             </div>
           }
@@ -320,14 +370,47 @@ export default function Sources() {
                         </Badge>
                       </td>
                       <td>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setSource(item.id)}
-                          aria-label={`Inspect ${item.name}`}
-                        >
-                          Inspect
-                        </Button>
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={save.isPending && save.variables === item.id}
+                            onClick={() => save.mutate(item.id)}
+                            aria-label={`Download ${item.name}`}
+                            title={
+                              item.kind === 'document'
+                                ? 'Download extracted text'
+                                : 'Download as CSV'
+                            }
+                          >
+                            {save.isPending && save.variables === item.id ? (
+                              <Loader2 className="animate-spin" />
+                            ) : (
+                              <Download />
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setSource(item.id)}
+                            aria-label={`Inspect ${item.name}`}
+                          >
+                            Inspect
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="danger-on-card text-danger hover:text-danger"
+                            onClick={() => {
+                              setSuccess('')
+                              setDeleting(item)
+                            }}
+                            aria-label={`Delete ${item.name}`}
+                            title="Delete source"
+                          >
+                            <Trash2 />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -450,12 +533,20 @@ export default function Sources() {
                   <ErrorState error={contracts.error} />
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
-                    {Object.keys(contracts.data?.[kind] || {}).map((key) => (
+                    {contracts.data?.[kind]?.required.map((key) => (
                       <span
                         key={key}
                         className="rounded-md border bg-background px-2 py-1 font-mono text-[11px]"
                       >
                         {key}
+                      </span>
+                    ))}
+                    {contracts.data?.[kind]?.optional.map((key) => (
+                      <span
+                        key={key}
+                        className="rounded-md border border-dashed bg-background px-2 py-1 font-mono text-[11px] text-muted-foreground"
+                      >
+                        {key} (optional)
                       </span>
                     ))}
                   </div>
@@ -475,7 +566,9 @@ export default function Sources() {
           </form>
         </DialogContent>
       </Dialog>
+      <ConnectSheet open={connecting} onOpenChange={setConnecting} onConnected={setSuccess} />
       <SourcePreview sourceId={source} onClose={() => setSource(null)} />
+      <DeleteSource source={deleting} onClose={() => setDeleting(null)} onDeleted={setSuccess} />
     </>
   )
 }

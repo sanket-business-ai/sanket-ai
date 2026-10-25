@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 from types import SimpleNamespace
 from app import retrieval
@@ -400,6 +401,7 @@ def test_malformed_pdf_and_oversize_upload_are_rejected(workspace, monkeypatch):
     )
 
 
+<<<<<<< HEAD
 def test_retrieval_falls_back_to_keyword_search(monkeypatch):
     monkeypatch.setattr(retrieval, "_embed_query", lambda query: None)
 
@@ -546,3 +548,90 @@ def test_uploaded_document_embedding_persists_in_database(workspace, monkeypatch
 
         assert chunk["text"] == "Customers reported delayed deliveries."
         assert chunk["embedding"] == [0.1, 0.2, 0.3]
+=======
+@pytest.mark.parametrize(
+    ("question", "grounded"),
+    [("Why did our sales drop in the latest month?", True), ("Why did customer churn rise last month?", False)],
+)
+def test_the_model_gets_the_draft_only_when_it_supports_something(seeded, monkeypatch, question, grounded):
+    client, factory = seeded
+    monkeypatch.setattr(settings(), "agent_mode", "ollama")
+    monkeypatch.setattr(settings(), "max_agent_steps", 0)
+    briefs = []
+
+    def model(schema, messages):
+        briefs.append(messages)
+        return AgentConclusion.model_validate(
+            {
+                "root_cause": "The evidence does not settle the question.",
+                "causal_chain": ["Observed change"],
+                "evidence_ids": ["E1"],
+                "confidence": "low",
+                "hypotheses": [
+                    {
+                        "id": f"H{i}",
+                        "claim": f"Competing explanation number {i}",
+                        "status": "inconclusive",
+                        "supporting_evidence": [],
+                        "contradicting_evidence": [],
+                        "explanation": "Evidence is observational.",
+                    }
+                    for i in (1, 2)
+                ],
+                "unknowns": ["The counterfactual is unknown."],
+                "recommended_action": "Collect more evidence.",
+            }
+        )
+
+    monkeypatch.setattr(agent, "model_json", model)
+    run_investigation(client, factory, question)
+    [messages] = briefs
+    # A draft that supports nothing would anchor the model on supplier delays for an unrelated question.
+    assert ("deterministic_draft" in json.loads(messages[2]["content"])) is grounded
+    assert ("no draft" in messages[3]["content"]) is not grounded
+
+
+def test_a_report_names_the_backup_model_that_answered(seeded, monkeypatch):
+    client, factory = seeded
+    for key, value in {
+        "agent_mode": "auto",
+        "max_agent_steps": 0,
+        "llm_provider": "openai",
+        "llm_base_url": "https://llm.example/v1",
+        "llm_api_key": "test-key",
+        "llm_model": "main-model",
+        "llm_fallback_models": "backup-model",
+    }.items():
+        monkeypatch.setattr(settings(), key, value)
+
+    def model(schema, messages):
+        agent.ANSWERED.set(("hosted", "backup-model"))  # what model_json records after switching models
+        return AgentConclusion.model_validate(
+            {
+                "root_cause": "Supplier delays coincide with stockouts.",
+                "causal_chain": ["Supplier delay", "Stockout"],
+                "evidence_ids": ["E1"],
+                "confidence": "medium",
+                "hypotheses": [
+                    {
+                        "id": f"H{i}",
+                        "claim": f"Competing explanation number {i}",
+                        "status": "inconclusive",
+                        "supporting_evidence": [],
+                        "contradicting_evidence": [],
+                        "explanation": "Evidence is observational.",
+                    }
+                    for i in (1, 2)
+                ],
+                "unknowns": ["The counterfactual is unknown."],
+                "recommended_action": "Review supplier delivery commitments.",
+            }
+        )
+
+    monkeypatch.setattr(agent, "model_json", model)
+    report = run_investigation(client, factory)["report"]
+    assert (report["engine"], report["model"]) == ("hosted", "backup-model")
+    assert (
+        report["model_notice"] == "main-model was at its rate limit or unavailable, so backup-model answered instead."
+    )
+>>>>>>> 5d018ad3a5674335f0c2c33a7a7b36e3f0f1f86b

@@ -3,6 +3,10 @@ from pathlib import Path
 
 os.environ["SANKET_ADMIN_PASSWORD"] = "test-only-password-12345"
 os.environ["SANKET_AGENT_MODE"] = "deterministic"
+os.environ["SANKET_LLM_PROVIDER"] = "ollama"
+os.environ["SANKET_MAX_AGENT_STEPS"] = "10"
+os.environ["SANKET_LLM_FALLBACK_MODELS"] = ""
+os.environ["SANKET_EMBEDDING_MODEL"] = ""  # tests never call Ollama; retrieval tests inject embeddings
 os.environ["SANKET_DATABASE_URL"] = "sqlite:///" + str(
     Path(__file__).resolve().parents[2] / ".cache/test-bootstrap.db"
 ).replace("\\", "/")
@@ -12,14 +16,16 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
-from app import ingestion, retrieval
-from app import main
+from app import agent, ingestion, main, retrieval
 from app.db import get_db, make_engine, uid
 
 
 @pytest.fixture(autouse=True)
 def disable_external_embeddings(monkeypatch):
+    agent.EXHAUSTED.clear()
+    monkeypatch.setattr(ingestion, "embed", lambda _: None)
     monkeypatch.setattr(ingestion, "embed_text", lambda _: None)
+    monkeypatch.setattr(retrieval, "embed", lambda _: None)
     monkeypatch.setattr(retrieval, "_embed_query", lambda _: None)
 
 

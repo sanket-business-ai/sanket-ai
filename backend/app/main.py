@@ -1,8 +1,10 @@
 import csv
 import logging
+import re
 import secrets
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from pathlib import PurePath
 
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,11 +18,13 @@ from .actions import assess_action
 from .analysis import Tools
 from .auth import COOKIE, bootstrap_admin, current_user, hash_password, new_session, verify_password
 from .config import settings
+from .connectors import import_sheet, sheet_export_url, sync_connection
 from .db import (
     Action,
     Audit,
     AuthSession,
     Base,
+    Connection,
     Investigation,
     LoginAttempt,
     Runtime,
@@ -32,10 +36,26 @@ from .db import (
     now,
 )
 from .demo import margin_demo_pack, seed_demo
-from .ingestion import CONTRACTS, active_sources, store_source
+from .ingestion import (
+    CONTRACTS,
+    OPTIONAL_COLUMNS,
+    active_sources,
+    detect_kind,
+    export_csv,
+    export_text,
+    store_source,
+)
 from .jobs import enqueue
 from .retrieval import search as retrieve_documents
-from .schemas import Decision, InvestigationRequest, Login
+from .schemas import (
+    ConnectionRequest,
+    Decision,
+    DeleteSourceRequest,
+    DemoRequest,
+    InvestigationRequest,
+    Login,
+    ResetRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +95,23 @@ async def unexpected_error(request, error):
     return JSONResponse(status_code=500, content={"detail": "An unexpected error occurred. Check server logs."})
 
 
+def unfinished():
+    """Queued investigations, or running ones whose 30-minute lease is still live."""
+    live_lease = now() - timedelta(minutes=30)
+    return (Investigation.status == "queued") | (
+        (Investigation.status == "running") & (Investigation.started_at > live_lease)
+    )
+
+
+def source_usage(db, source):
+    ids = [job.id for job in db.scalars(select(Investigation)) if source.id in job.source_ids]
+    if not ids:
+        return ids, 0, False
+    actions = db.scalar(select(func.count()).select_from(Action).where(Action.investigation_id.in_(ids)))
+    busy = db.scalar(select(func.count()).select_from(Investigation).where(Investigation.id.in_(ids), unfinished()))
+    return ids, actions, bool(busy)
+
+
 def require_job(db, investigation_id):
     job = db.get(Investigation, investigation_id)
     if job is None:
@@ -94,6 +131,10 @@ def summary(job):
         "confidence": job.report.get("confidence") if job.report else None,
         "engine": job.report.get("engine") if job.report else None,
     }
+
+
+def connection_dict(connection):
+    return {column.name: getattr(connection, column.name) for column in Connection.__table__.columns}
 
 
 def action_dict(action):
@@ -180,7 +221,8 @@ def system(db: Session = Depends(get_db), user: User = Depends(current_user)):
     heartbeat = db.get(Runtime, "worker")
     return {
         "agent_mode": settings().agent_mode,
-        "model": settings().ollama_model,
+        "model": settings().model_name,
+        "llm_provider": settings().llm_provider,
         "worker_online": bool(
             heartbeat and heartbeat.heartbeat.replace(tzinfo=now().tzinfo) > now() - timedelta(minutes=20)
         ),
@@ -229,7 +271,10 @@ def search_source_documents(
 
 @app.get("/api/sources/contracts")
 def contracts(user: User = Depends(current_user)):
-    return CONTRACTS
+    return {
+        kind: {"required": list(columns), "optional": list(OPTIONAL_COLUMNS.get(kind, {}))}
+        for kind, columns in CONTRACTS.items()
+    }
 
 
 @app.get("/api/sources/{source_id}")
@@ -240,11 +285,94 @@ def source_detail(source_id: str, offset: int = 0, db: Session = Depends(get_db)
     if not source:
         raise HTTPException(404, "Source not found")
     key = "chunks" if source.kind == "document" else "rows"
+    page = source.content[key][offset : offset + 100]
+    if key == "chunks":
+        page = [{k: v for k, v in chunk.items() if k != "embedding"} for chunk in page]
     return {
         **source_dict(source, {s.id for s in active_sources(db)}),
-        key: source.content[key][offset : offset + 100],
+        key: page,
         "offset": offset,
     }
+
+
+@app.get("/api/sources/{source_id}/download")
+def download_source(source_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    source = db.get(Source, source_id)
+    if not source:
+        raise HTTPException(404, "Source not found")
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", PurePath(source.name).stem)[:120] or "source"
+    if source.kind == "document":
+        body, media, suffix = export_text(source.content["chunks"]), "text/plain", "txt"
+    else:
+        body, media, suffix = export_csv(source.kind, source.content["rows"]), "text/csv", "csv"
+    return Response(
+        body,
+        media_type=f"{media}; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{stem}.{suffix}"'},
+    )
+
+
+@app.get("/api/sources/{source_id}/usage")
+def usage(source_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    source = db.get(Source, source_id)
+    if not source:
+        raise HTTPException(404, "Source not found")
+    ids, actions, busy = source_usage(db, source)
+    active = source.id in {s.id for s in active_sources(db)}
+    replacement = None
+    if active and source.kind != "document":
+        older = db.scalar(
+            select(Source)
+            .where(Source.kind == source.kind, Source.id != source.id)
+            .order_by(Source.created_at.desc(), Source.id.desc())
+            .limit(1)
+        )
+        replacement = older.name if older else None
+    return {
+        "investigations": len(ids),
+        "actions": actions,
+        "running": busy,
+        "active": active,
+        "replacement": replacement,
+        "connections": list(db.scalars(select(Connection.name).where(Connection.last_source_id == source.id))),
+    }
+
+
+@app.post("/api/sources/{source_id}/delete")
+def delete_source(
+    source_id: str,
+    payload: DeleteSourceRequest | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    source = db.get(Source, source_id)
+    if not source:
+        raise HTTPException(404, "Source not found")
+    ids, actions, busy = source_usage(db, source)
+    if busy:
+        raise HTTPException(409, "An investigation using this source is still running. Wait for it to finish.")
+    if ids and not (payload and payload.delete_investigations):
+        raise HTTPException(
+            409,
+            f"{len(ids)} investigation(s) used this source. Confirm deleting them too, or upload a corrected version instead.",
+        )
+    # A report never outlives its evidence: investigations that used the source go with it.
+    if ids:
+        db.execute(delete(Action).where(Action.investigation_id.in_(ids)))
+        db.execute(update(Investigation).where(Investigation.parent_id.in_(ids)).values(parent_id=None))
+        db.execute(delete(Investigation).where(Investigation.id.in_(ids)))
+    details = {
+        "name": source.name,
+        "kind": source.kind,
+        "rows": source.row_count,
+        "checksum": source.checksum,
+        "investigations": ids,
+        "actions": actions,
+    }
+    db.delete(source)
+    db.add(Audit(actor=user.id, event="source.deleted", entity_id=source_id, details=details))
+    db.commit()
+    return {"deleted": source_id, "investigations": len(ids), "actions": actions}
 
 
 @app.post("/api/sources", status_code=201)
@@ -259,6 +387,10 @@ async def upload(
     if len(data) > settings().upload_max_bytes:
         raise HTTPException(413, "File exceeds the 10 MB upload limit")
     try:
+        if kind == "auto":
+            kind = await run_in_threadpool(detect_kind, data, file.filename or "upload")
+            if not kind:
+                raise ValueError("Could not tell which type this file is. Choose its type and upload it again.")
         source, created = await run_in_threadpool(store_source, db, data, file.filename or "upload", kind)
         if created:
             db.add(
@@ -282,48 +414,132 @@ async def upload(
     return source_dict(source, {s.id for s in active_sources(db)})
 
 
+@app.get("/api/connections")
+def connections(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return [connection_dict(c) for c in db.scalars(select(Connection).order_by(Connection.created_at.desc()))]
+
+
+@app.post("/api/connections", status_code=201)
+def create_connection(payload: ConnectionRequest, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    if payload.kind not in CONTRACTS:
+        raise HTTPException(422, "Choose a dataset type. Documents cannot be connected from Google Sheets.")
+    try:
+        url = sheet_export_url(payload.url)
+        if db.scalar(select(Connection).where(Connection.url == url, Connection.kind == payload.kind)):
+            raise HTTPException(409, "This sheet is already connected for that dataset type.")
+        name = payload.name.strip() or f"Google Sheet {payload.kind}"
+        # Import before saving the connection so a private or invalid sheet is reported straight away.
+        source, created = import_sheet(db, payload.kind, name, url)
+    except (ValueError, UnicodeError, csv.Error) as error:
+        db.rollback()
+        raise HTTPException(422, str(error)) from error
+    connection = Connection(
+        provider=payload.provider,
+        kind=payload.kind,
+        name=name,
+        url=url,
+        refresh_hours=payload.refresh_hours,
+        last_synced_at=now(),
+        last_status="updated" if created else "unchanged",
+        last_source_id=source.id,
+        created_by=user.id,
+    )
+    db.add(connection)
+    db.flush()
+    db.add(
+        Audit(
+            actor=user.id,
+            event="connection.created",
+            entity_id=connection.id,
+            details={"provider": payload.provider, "kind": payload.kind, "source_id": source.id},
+        )
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "This data was imported concurrently. Refresh and try again.")
+    return connection_dict(connection)
+
+
+@app.post("/api/connections/{connection_id}/sync")
+def sync_now(connection_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    connection = db.get(Connection, connection_id)
+    if not connection:
+        raise HTTPException(404, "Connection not found")
+    sync_connection(db, connection, user.id)
+    db.commit()
+    return connection_dict(connection)
+
+
+@app.post("/api/connections/{connection_id}/delete")
+def disconnect(connection_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    connection = db.get(Connection, connection_id)
+    if not connection:
+        raise HTTPException(404, "Connection not found")
+    details = {"name": connection.name, "kind": connection.kind, "provider": connection.provider}
+    db.delete(connection)
+    db.add(Audit(actor=user.id, event="connection.deleted", entity_id=connection_id, details=details))
+    db.commit()
+    return {"deleted": connection_id}
+
+
 @app.post("/api/demo", status_code=201)
-@app.post("/api/demo", status_code=201)
-def demo(
-    payload: dict | None = None,
-    db: Session = Depends(get_db),
-    user: User = Depends(current_user),
-):
+def demo(payload: DemoRequest | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    pack = payload.pack if payload else "supply"
     if not settings().demo_enabled:
         raise HTTPException(404, "Demo loading is disabled")
 
     if db.scalar(select(Source).limit(1)):
         raise HTTPException(409, "Demo data can only be loaded into an empty workspace")
-
-    scenario = (payload or {}).get("scenario", "supply")
-
-    if scenario not in ("supply", "margin"):
-        raise HTTPException(422, "Scenario must be 'supply' or 'margin'")
-
-    if scenario == "margin":
-        from .ingestion import store_source
-        from .demo import margin_demo_pack
-
+    scenario = payload.scenario if payload and payload.scenario else pack
+    if payload and payload.scenario == "margin":
         seeded = [store_source(db, data, name, kind)[0] for kind, name, data in margin_demo_pack()]
     else:
-        seeded = seed_demo(db)
-
+        seeded = seed_demo(db, pack)
+    documents = sum(source.kind == "document" for source in seeded)
     db.add(
         Audit(
             actor=user.id,
             event="demo.loaded",
             entity_id=user.id,
-            details={"sources": len(seeded), "scenario": scenario},
+            details={"sources": len(seeded), "pack": pack, "scenario": scenario},
         )
     )
     db.commit()
-
     return {
         "sources": len(seeded),
+        "datasets": len(seeded) - documents,
+        "documents": documents,
+        "pack": pack,
+        "scenario": scenario,
         "company": "HimalayanMart",
         "synthetic": True,
-        "scenario": scenario,
     }
+
+@app.post("/api/workspace/reset")
+def reset_workspace(payload: ResetRequest, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    # A testing aid: production rejects demo_enabled, so real business data cannot be wiped here.
+    if not settings().demo_enabled:
+        raise HTTPException(404, "Workspace reset is disabled")
+    if db.scalar(select(func.count()).select_from(Investigation).where(unfinished())):
+        raise HTTPException(409, "Wait for running investigations to finish before resetting the workspace")
+    removed = {
+        "connections": db.scalar(select(func.count()).select_from(Connection)),
+        "sources": db.scalar(select(func.count()).select_from(Source)),
+        "investigations": db.scalar(select(func.count()).select_from(Investigation)),
+        "actions": db.scalar(select(func.count()).select_from(Action)),
+    }
+    # Reports, actions and their evidence go together, so no report outlives its sources. Connections go
+    # too, or their next sync would refill the workspace.
+    db.execute(delete(Connection))
+    db.execute(delete(Action))
+    db.execute(update(Investigation).values(parent_id=None))
+    db.execute(delete(Investigation))
+    db.execute(delete(Source))
+    db.add(Audit(actor=user.id, event="workspace.reset", entity_id=user.id, details=removed))
+    db.commit()
+    return removed
 
 
 @app.get("/api/dashboard")

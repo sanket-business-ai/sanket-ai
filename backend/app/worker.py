@@ -10,6 +10,7 @@ from sqlalchemy import or_, select, update
 
 from .actions import assess_action
 from .agent import investigate
+from .connectors import sync_due_connections
 from .db import Action, Investigation, Runtime, SessionLocal, Source, now, uid
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ def process_one(session_factory=SessionLocal):
     def emit(stage, message, data):
         with session_factory() as db:
             job = db.get(Investigation, job_id)
-            if job.lease_token != token or job.status != "running":
+            if job is None or job.lease_token != token or job.status != "running":
                 raise RuntimeError("Investigation lease lost")
             job.trail = job.trail + [
                 {
@@ -78,11 +79,16 @@ def process_one(session_factory=SessionLocal):
         report = investigate(sources, question, mode, emit, challenged)
         with session_factory() as db:
             job = db.get(Investigation, job_id)
-            if job.lease_token != token or job.status != "running":
+            if job is None or job.lease_token != token or job.status != "running":
                 return True
             job.report, job.status, job.completed_at = report, "completed", now()
             if report["actionable"]:
-                metric = next((m for m in report["metrics"] if m["key"] == "late_rate" and m["anomaly"]), None)
+                metric = None
+                if report.get("scenario") == "margin":
+                    metric = next((m for m in report["metrics"] if m["key"] == "contribution"), None)
+                metric = metric or next(
+                    (m for m in report["metrics"] if m["key"] == "late_rate" and m["anomaly"]), None
+                )
                 metric = metric or next(m for m in report["metrics"] if m["key"] == "revenue")
                 db.add(
                     Action(
@@ -99,11 +105,9 @@ def process_one(session_factory=SessionLocal):
         logger.exception("Investigation %s failed", job_id)
         with session_factory() as db:
             job = db.get(Investigation, job_id)
-            if job.lease_token == token:
+            if job is not None and job.lease_token == token:
                 job.status = "failed"
-                job.error = (
-                    "Investigation could not finish. Check local model availability and worker logs, then retry."
-                )
+                job.error = "Investigation could not finish. Check model availability and worker logs, then retry."
                 job.completed_at = now()
                 db.commit()
     return True
@@ -152,6 +156,7 @@ def main():
                 db.commit()
             if time.monotonic() - last_monitor >= 60:
                 monitor_due_actions()
+                sync_due_connections()
                 last_monitor = time.monotonic()
             if not process_one():
                 time.sleep(2)

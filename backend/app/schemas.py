@@ -25,6 +25,27 @@ class InvestigationRequest(StrictModel):
         return value
 
 
+class DemoRequest(StrictModel):
+    pack: Literal["supply", "margin"] = "supply"
+    scenario: Literal["supply", "margin"] | None = None
+
+
+class ConnectionRequest(StrictModel):
+    provider: Literal["google_sheets"] = "google_sheets"
+    kind: str = Field(min_length=1, max_length=32)
+    url: str = Field(min_length=20, max_length=2000)
+    name: str = Field(default="", max_length=120)
+    refresh_hours: Literal[0, 1, 6, 24] = 24
+
+
+class DeleteSourceRequest(StrictModel):
+    delete_investigations: bool = False
+
+
+class ResetRequest(StrictModel):
+    confirm: Literal["RESET"]
+
+
 class Decision(StrictModel):
     decision: Literal["approve", "reject"]
 
@@ -45,6 +66,9 @@ class AgentStep(StrictModel):
         "get_deliveries",
         "get_customer_signals",
         "get_marketing",
+        "get_margin_bridge",
+        "get_delivery_costs",
+        "get_supplier_costs",
         "search_documents",
         "finish",
     ]

@@ -1,11 +1,108 @@
-import { useQuery } from '@tanstack/react-query'
-import { Cpu, Database, FileCheck2, LockKeyhole, ShieldCheck } from 'lucide-react'
-import { api } from '@/lib/api'
-import type { AuditEvent, System } from '@/lib/types'
+import { useState, type FormEvent } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  Cpu,
+  Database,
+  FileCheck2,
+  Loader2,
+  LockKeyhole,
+  RotateCcw,
+  ShieldCheck,
+} from 'lucide-react'
+import { api, post } from '@/lib/api'
+import type { AuditEvent, ResetResult, System } from '@/lib/types'
 import { dateTime } from '@/lib/utils'
 import { ErrorState, Loading, PageHeading } from '@/components/shared'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+
+function ResetWorkspace() {
+  const client = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [typed, setTyped] = useState('')
+  const [done, setDone] = useState('')
+  const reset = useMutation({
+    mutationFn: () => post<ResetResult>('/workspace/reset', { confirm: 'RESET' }),
+    onSuccess: (data) => {
+      setOpen(false)
+      setTyped('')
+      setDone(
+        `Removed ${data.sources} sources, ${data.investigations} investigations, ${data.actions} actions and ${data.connections} connections. Load a demo or upload files to start again.`,
+      )
+      client.invalidateQueries()
+    },
+  })
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (typed === 'RESET') reset.mutate()
+  }
+  return (
+    <Card className="mb-7 border-danger/30">
+      <CardHeader>
+        <CardTitle className="danger-on-card flex items-center gap-2 text-danger">
+          <RotateCcw size={17} />
+          Reset workspace
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs leading-6 text-muted-foreground">
+          Permanently deletes every data source, investigation, action and live connection so you
+          can load a different demo. Your sign-in and the audit trail are kept. Available only while
+          demo loading is enabled, never in production.
+        </p>
+        {done && (
+          <p role="status" className="mt-4 rounded-lg bg-muted p-3 text-xs leading-6">
+            {done}
+          </p>
+        )}
+        <Button
+          className="mt-4"
+          variant="destructive"
+          size="sm"
+          onClick={() => {
+            reset.reset()
+            setDone('')
+            setOpen(true)
+          }}
+        >
+          <RotateCcw />
+          Reset workspace
+        </Button>
+      </CardContent>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogTitle className="text-xl font-semibold">Delete all workspace data?</DialogTitle>
+          <DialogDescription className="text-sm leading-6 text-muted-foreground">
+            Every source, investigation, report and action will be removed. This cannot be undone.
+          </DialogDescription>
+          <form className="space-y-4" onSubmit={submit}>
+            <div>
+              <label htmlFor="reset-confirm">Type RESET to confirm</label>
+              <input
+                id="reset-confirm"
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            {reset.error && <ErrorState error={reset.error} />}
+            <Button
+              className="w-full"
+              variant="destructive"
+              type="submit"
+              disabled={typed !== 'RESET' || reset.isPending}
+            >
+              {reset.isPending ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+              Delete everything
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  )
+}
 
 export default function Workspace() {
   const system = useQuery({ queryKey: ['system'], queryFn: () => api<System>('/system') })
@@ -37,7 +134,11 @@ export default function Workspace() {
                   <dd className="capitalize">{system.data.agent_mode}</dd>
                 </div>
                 <div>
-                  <dt>Configured local model</dt>
+                  <dt>
+                    {system.data.llm_provider === 'openai'
+                      ? 'Configured hosted model'
+                      : 'Configured local model'}
+                  </dt>
                   <dd>{system.data.model}</dd>
                 </div>
                 <div>
@@ -105,6 +206,7 @@ export default function Workspace() {
           </CardContent>
         </Card>
       </div>
+      {system.data?.demo_enabled && <ResetWorkspace />}
       <Card>
         <CardHeader>
           <CardTitle>Audit trail</CardTitle>

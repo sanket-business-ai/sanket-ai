@@ -4,7 +4,6 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
   ArrowRight,
-  CheckCircle2,
   ChevronRight,
   Download,
   FileText,
@@ -12,10 +11,8 @@ import {
   GitBranch,
   Loader2,
   RefreshCw,
-  Search,
   ShieldCheck,
   Sparkles,
-  Terminal,
   TriangleAlert,
 } from 'lucide-react'
 import { api, post } from '@/lib/api'
@@ -23,11 +20,31 @@ import type { Investigation, InvestigationDetail, Trail } from '@/lib/types'
 import { cn, currency, dateTime } from '@/lib/utils'
 import { ErrorState, Loading, MetricCard, Status } from '@/components/shared'
 import { ActionCard } from '@/components/ActionCard'
+import { MarginWaterfall } from '@/components/MarginWaterfall'
 import { SourcePreview } from '@/components/SourcePreview'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
+const STEP_TITLES: Record<string, string> = {
+  plan: 'Started the investigation',
+  hypotheses: 'Formed hypotheses',
+  fallback: 'Switched to the fixed analysis',
+  challenge: 'Tested rival explanations',
+  conclusion: 'Reached a conclusion',
+  detect_anomalies: 'Checked the key numbers',
+  segment_performance: 'Compared products',
+  get_inventory: 'Checked stock levels',
+  get_supplier_data: 'Checked supplier shipments',
+  get_deliveries: 'Checked deliveries',
+  get_customer_signals: 'Looked at customer activity',
+  get_marketing: 'Checked marketing',
+  search_documents: 'Read the documents',
+  get_margin_bridge: 'Broke down the margin',
+  get_delivery_costs: 'Checked courier fees',
+  get_supplier_costs: 'Checked supplier prices',
+}
 
 function TrailView({ trail, running }: { trail: Trail[]; running: boolean }) {
   return (
@@ -35,70 +52,86 @@ function TrailView({ trail, running }: { trail: Trail[]; running: boolean }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <GitBranch size={17} />
-          Investigation trail
+          How SanketAI got here
         </CardTitle>
         <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          Recorded decisions and tool results — a reviewable trail of what was checked.
+          Each step and what it found, recorded as the investigation ran.
         </p>
       </CardHeader>
       <CardContent>
-        <ol className="trail-list">
-          {trail.map((item) => (
-            <li key={item.sequence}>
-              <span
-                className={cn(
-                  'trail-dot',
-                  ['challenge', 'conclusion'].includes(item.stage)
-                    ? 'bg-primary/10 text-primary'
-                    : 'bg-muted text-muted-foreground',
-                )}
-              >
-                {item.stage === 'tool' ? (
-                  <Terminal size={14} />
-                ) : item.stage === 'conclusion' ? (
-                  <CheckCircle2 size={14} />
+        <ol className="space-y-5">
+          {trail.map((item) => {
+            const key = item.data.tool || item.stage
+            const findings = item.data.findings ?? []
+            return (
+              <li key={item.sequence} className="relative border-l pl-5">
+                <span
+                  className={cn(
+                    'absolute -left-[5px] top-1.5 size-2.5 rounded-full border-2 border-background',
+                    item.stage === 'conclusion'
+                      ? 'bg-success'
+                      : item.stage === 'fallback'
+                        ? 'bg-warning'
+                        : 'bg-muted-foreground/40',
+                  )}
+                />
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-sm font-medium">
+                    {STEP_TITLES[key] ?? key.replaceAll('_', ' ')}
+                  </p>
+                  <time className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {new Date(item.timestamp).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    })}
+                  </time>
+                </div>
+                {item.stage === 'conclusion' || !findings.length ? (
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.message}</p>
                 ) : (
-                  <Search size={14} />
+                  <ul className="mt-1.5 space-y-1">
+                    {findings.map((line) => (
+                      <li key={line} className="text-sm leading-6 tabular-nums">
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              </span>
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
-                  {item.data.tool?.replaceAll('_', ' ') || item.stage}
-                </p>
-                <time className="shrink-0 text-[11px] text-muted-foreground">
-                  {dateTime(item.timestamp)}
-                </time>
-              </div>
-              <p className="mt-2 text-sm leading-6">{item.message}</p>
-              {item.data.hypotheses && (
-                <ul className="mt-3 space-y-2">
-                  {item.data.hypotheses.map((h) => (
-                    <li key={h.id} className="rounded-md bg-muted p-3 text-xs">
-                      <strong className="mr-2 text-primary">{h.id}</strong>
-                      {h.claim}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {item.data.result !== undefined && (
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-primary">
-                    Inspect tool result
-                  </summary>
-                  <pre className="mt-3 max-h-72 overflow-auto rounded-lg bg-muted p-4 text-[11px] leading-5">
-                    {JSON.stringify(item.data.result, null, 2)}
-                  </pre>
-                </details>
-              )}
+                {item.data.hypotheses && (
+                  <ul className="mt-2 space-y-1">
+                    {item.data.hypotheses.map((h) => (
+                      <li key={h.id} className="text-sm leading-6">
+                        <span className="mr-2 font-mono text-xs text-muted-foreground">{h.id}</span>
+                        {h.claim}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {item.data.result !== undefined && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                      Why this step · raw data
+                    </summary>
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.message}</p>
+                    <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
+                      {JSON.stringify(item.data.result, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </li>
+            )
+          })}
+          {running && (
+            <li role="status" className="relative border-l border-dashed pl-5">
+              <span className="absolute -left-[5px] top-1.5 size-2.5 animate-pulse rounded-full bg-muted-foreground/60" />
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 size={14} className="animate-spin" />
+                Working on the next check…
+              </p>
             </li>
-          ))}
+          )}
         </ol>
-        {running && (
-          <p role="status" className="ml-2 flex items-center gap-3 py-4 text-xs text-primary">
-            <Loader2 size={16} className="animate-spin" />
-            Investigator is working. Progress saves automatically.
-          </p>
-        )}
       </CardContent>
     </Card>
   )
@@ -235,10 +268,10 @@ export default function InvestigationView() {
       ) : report ? (
         <>
           <div className="mb-6 flex flex-wrap items-center gap-2">
-            <Badge variant={report.engine === 'ollama' ? 'default' : 'warning'}>
+            <Badge variant={report.engine === 'deterministic' ? 'warning' : 'default'}>
               <Sparkles size={12} />
-              {report.engine === 'ollama'
-                ? `Local agent · ${report.model}`
+              {report.engine !== 'deterministic'
+                ? `${report.engine === 'hosted' ? 'Hosted agent' : 'Local agent'} · ${report.model}`
                 : 'Deterministic evidence analysis'}
             </Badge>
             <Badge variant="outline">{report.confidence} evidence strength</Badge>
@@ -306,12 +339,34 @@ export default function InvestigationView() {
                       <CardTitle>Business impact</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-semibold tracking-tight">
-                        {report.impact.observed_revenue_difference === null
-                          ? 'Insufficient baseline'
-                          : currency(report.impact.observed_revenue_difference)}
-                      </p>
-                      <p className="mt-2 text-xs text-muted-foreground">{report.impact.label}</p>
+                      {report.scenario === 'margin' &&
+                      report.impact.observed_contribution_difference != null ? (
+                        <>
+                          <p className="text-3xl font-semibold tracking-tight">
+                            {currency(report.impact.observed_contribution_difference)}
+                          </p>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Observed contribution difference, from recorded costs
+                          </p>
+                          {report.impact.observed_revenue_difference !== null && (
+                            <p className="mt-3 text-xs text-muted-foreground">
+                              Revenue difference:{' '}
+                              {currency(report.impact.observed_revenue_difference)}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-3xl font-semibold tracking-tight">
+                            {report.impact.observed_revenue_difference === null
+                              ? 'Insufficient baseline'
+                              : currency(report.impact.observed_revenue_difference)}
+                          </p>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {report.impact.label}
+                          </p>
+                        </>
+                      )}
                       <p className="mt-4 text-xs leading-6 text-muted-foreground">
                         Current: {report.period.current_start} — {report.period.current_end}
                         <br />
@@ -379,6 +434,9 @@ export default function InvestigationView() {
                   </Card>
                 </div>
               </section>
+              {report.scenario === 'margin' && report.margin_bridge?.available && (
+                <MarginWaterfall bridge={report.margin_bridge} onEvidence={showEvidence} />
+              )}
               <div className="metric-grid mt-6">
                 {report.metrics.map((metric) => (
                   <MetricCard key={metric.key} metric={metric} />

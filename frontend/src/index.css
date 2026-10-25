@@ -519,7 +519,8 @@
   flex-wrap: wrap;
   font-size: 11px;
 }
-[data-theme='dark'] .metric-comparison .text-danger {
+[data-theme='dark'] .metric-comparison .text-danger,
+[data-theme='dark'] .danger-on-card {
   color: var(--danger-bg);
 }
 [data-theme='dark'] .metric-comparison .text-success {
