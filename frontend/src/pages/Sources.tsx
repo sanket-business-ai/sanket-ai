@@ -8,13 +8,21 @@ import {
   Link2,
   Loader2,
   Plus,
+  Search,
   ShieldCheck,
   Sparkles,
   Trash2,
   UploadCloud,
 } from 'lucide-react'
 import { api, download, post } from '@/lib/api'
-import type { Contracts, DemoPack, DemoResult, Source, System } from '@/lib/types'
+import type {
+  Contracts,
+  DemoPack,
+  DemoResult,
+  DocumentSearchResponse,
+  Source,
+  System,
+} from '@/lib/types'
 import { dateTime, number } from '@/lib/utils'
 import { Empty, ErrorState, Loading, PageHeading } from '@/components/shared'
 import { BulkUpload } from '@/components/BulkUpload'
@@ -50,6 +58,7 @@ export default function Sources() {
   const [connecting, setConnecting] = useState(false)
   const [allVersions, setAllVersions] = useState(false)
   const [success, setSuccess] = useState('')
+  const [searchText, setSearchText] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const query = useQuery({ queryKey: ['sources'], queryFn: () => api<Source[]>('/sources') })
   const contracts = useQuery({
@@ -84,6 +93,9 @@ export default function Sources() {
         `HimalayanMart synthetic ${data.pack === 'margin' ? 'margin ' : ''}evidence pack loaded: ${data.datasets} datasets and ${data.documents} documents.`,
       )
     },
+  })
+  const documentSearch = useMutation({
+    mutationFn: () => post<DocumentSearchResponse>('/sources/search', { query: searchText.trim() }),
   })
   const save = useMutation({ mutationFn: (id: string) => download(`/sources/${id}/download`) })
   const failure = demo.error ?? save.error
@@ -170,6 +182,92 @@ export default function Sources() {
           <ErrorState error={failure} />
         </div>
       )}
+      <Card className="mb-7">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Search size={18} />
+            Search uploaded documents
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Find relevant passages in PDFs and other uploaded documents with local Ollama bge-m3.
+            Keyword search is used if embeddings are unavailable.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form
+            className="flex flex-col gap-3 sm:flex-row"
+            onSubmit={(event) => {
+              event.preventDefault()
+              documentSearch.mutate()
+            }}
+          >
+            <label className="sr-only" htmlFor="document-search">
+              Search documents
+            </label>
+            <input
+              id="document-search"
+              className="min-w-0 flex-1"
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="e.g. why are customers upset about deliveries?"
+              maxLength={500}
+              required
+            />
+            <Button
+              type="submit"
+              disabled={!documentCount || !searchText.trim() || documentSearch.isPending}
+            >
+              {documentSearch.isPending ? <Loader2 className="animate-spin" /> : <Search />}
+              Search documents
+            </Button>
+          </form>
+          {!documentCount && (
+            <p className="text-xs text-muted-foreground">
+              Upload a PDF or other document to search its contents.
+            </p>
+          )}
+          {documentSearch.error && <ErrorState error={documentSearch.error} />}
+          {documentSearch.data && (
+            <div aria-live="polite" className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {documentSearch.data.method === 'semantic'
+                  ? 'Semantic results · Ollama bge-m3'
+                  : 'Keyword fallback · Ollama embeddings unavailable'}
+                {' · '}
+                {documentSearch.data.results.length} matching passages
+              </p>
+              {documentSearch.data.results.length ? (
+                documentSearch.data.results.map((result) => (
+                  <article
+                    key={`${result.source_id}-${result.page}-${result.chunk}`}
+                    className="rounded-xl border p-4"
+                  >
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        className="text-left text-sm font-semibold text-primary hover:underline"
+                        onClick={() => setSource(result.source_id)}
+                      >
+                        {result.source_name} · Page {result.page}, chunk {result.chunk}
+                      </button>
+                      <span className="text-xs text-muted-foreground">
+                        {documentSearch.data.method === 'semantic'
+                          ? `Similarity ${result.score.toFixed(3)}`
+                          : `${result.score} keyword matches`}
+                      </span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm leading-6">{result.text}</p>
+                  </article>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No matching document passages found.
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
       <BulkUpload onDone={setSuccess} />
       <Connections onMessage={setSuccess} />
       {query.isPending ? (
@@ -364,8 +462,9 @@ export default function Sources() {
         <DialogContent>
           <DialogTitle className="text-xl font-semibold">Connect a piece of evidence</DialogTitle>
           <DialogDescription className="text-sm leading-6 text-muted-foreground">
-            Choose the dataset type and upload a complete file. Validation runs before any data is
-            saved.
+            {kind === 'document'
+              ? 'Documents are split into searchable chunks and embedded with local Ollama bge-m3 when available. If Ollama is offline, keyword retrieval remains available.'
+              : 'Choose the dataset type and upload a complete file. Validation runs before any data is saved.'}
           </DialogDescription>
           <form className="space-y-5" onSubmit={submit}>
             <div>
@@ -406,7 +505,7 @@ export default function Sources() {
                 {file
                   ? `${(file.size / 1024).toFixed(1)} KB`
                   : kind === 'document'
-                    ? 'PDF, TXT or Markdown · up to 10 MB'
+                    ? 'PDF, TXT or Markdown · up to 10 MB · 500 chunks maximum'
                     : 'CSV or XLSX · up to 50,000 rows · 10 MB'}
               </span>
               <input

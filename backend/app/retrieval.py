@@ -1,8 +1,4 @@
-"""Document retrieval: bge-m3 embeddings through the local Ollama when available, keyword overlap otherwise.
-
-Builds on the retriever from the document-retriever branch (shanky-1234): chunks get an embedding at
-upload, the question is embedded at search time, and anything without an embedding falls back to keywords.
-"""
+"""Document retrieval with local embeddings and keyword fallback."""
 
 import math
 import re
@@ -12,7 +8,6 @@ import httpx
 from .config import settings
 
 STOP_WORDS = {"the", "and", "why", "our", "this", "what"}
-# bge-m3 scores unrelated business text 0.33-0.48 (measured on the gadget packs); below this a chunk is not a match.
 MIN_SIMILARITY = 0.5
 BATCH = 32
 
@@ -32,9 +27,15 @@ def embed(texts):
                 )
                 response.raise_for_status()
                 vectors += response.json()["embeddings"]
-    except httpx.HTTPError, ValueError, KeyError:
+    except httpx.HTTPError, ValueError, KeyError, TypeError:
         return None
     return vectors if len(vectors) == len(texts) and all(vectors) else None
+
+
+def _embed_query(query: str) -> list[float] | None:
+    """Compatibility helper for callers that embed one query at a time."""
+    vectors = embed([query])
+    return vectors[0] if vectors else None
 
 
 def cosine(first, second):
@@ -45,41 +46,81 @@ def cosine(first, second):
     return dot / norms if norms else 0.0
 
 
+def _cosine_similarity(first: list[float], second: list[float]) -> float:
+    """Compatibility alias for the original retrieval API."""
+    return cosine(first, second)
+
+
 def words(text):
     return set(re.findall(r"\w{3,}", text.lower()))
 
 
 def rank(query, chunks, limit=5):
-    """Best (source, chunk) pairs for the query, or for any of several queries given as a list.
-
-    Chunks with embeddings are ranked by meaning; chunks without one (uploaded while embeddings were off)
-    are ranked by shared words after them. With several queries each chunk keeps its best score, so a
-    chunk is cited once. Returns matches as dicts with `similarity` or `overlap`.
-    """
+    """Rank source/chunk pairs semantically, with keyword fallback for unembedded chunks."""
     queries = [query] if isinstance(query, str) else query
-    tokens = [words(q) - STOP_WORDS for q in queries]
+    tokens = [words(item) - STOP_WORDS for item in queries]
     query_vectors = None
     if any(chunk.get("embedding") for _, chunk in chunks):
-        query_vectors = embed(queries)
+        if isinstance(query, str):
+            vector = _embed_query(query)
+            query_vectors = [vector] if vector else None
+        else:
+            query_vectors = embed(queries)
     semantic, keyword = [], []
     for source, chunk in chunks:
         text = words(chunk["text"])
-        overlap = max(len(t & text) for t in tokens)
+        overlap = max((len(token_set & text) for token_set in tokens), default=0)
         if query_vectors and chunk.get("embedding"):
             similarity = max(cosine(vector, chunk["embedding"]) for vector in query_vectors)
             if similarity >= MIN_SIMILARITY:
                 semantic.append({"source": source, "chunk": chunk, "similarity": similarity, "overlap": overlap})
         elif overlap:
             keyword.append({"source": source, "chunk": chunk, "overlap": overlap})
-    semantic.sort(key=lambda m: (-m["similarity"], m["source"].name, m["chunk"]["chunk"]))
-    keyword.sort(key=lambda m: (-m["overlap"], m["source"].name, m["chunk"]["chunk"]))
+    semantic.sort(key=lambda match: (-match["similarity"], match["source"].name, match["chunk"]["chunk"]))
+    keyword.sort(key=lambda match: (-match["overlap"], match["source"].name, match["chunk"]["chunk"]))
     matches = (semantic + keyword)[:limit]
-    used = {"semantic" if "similarity" in m else "keyword" for m in matches}
+    used = {"semantic" if "similarity" in match else "keyword" for match in matches}
+    semantic_method = f"semantic ({settings().embedding_model})" if settings().embedding_model else "semantic"
     method = (
-        f"semantic ({settings().embedding_model}) and keyword"
+        f"{semantic_method} and keyword"
         if used == {"semantic", "keyword"}
-        else f"semantic ({settings().embedding_model})"
+        else semantic_method
         if used == {"semantic"}
         else "lexical keyword retrieval"
     )
     return matches, method
+
+
+def search(sources, query: str, limit: int = 5) -> dict:
+    """Compatibility API for direct document search and the /sources/search endpoint."""
+    chunks_to_search = []
+    for source in sources:
+        content = source.content if hasattr(source, "content") else source.get("content", source)
+        if not isinstance(content, dict):
+            continue
+        for chunk in content.get("chunks", []):
+            text = chunk.get("text", "")
+            if text:
+                chunks_to_search.append({"source": source, "chunk": chunk, "text": text})
+
+    query_embedding = _embed_query(query)
+    embedded_chunks = [item for item in chunks_to_search if item["chunk"].get("embedding")]
+    if query_embedding and embedded_chunks:
+        results = [
+            {
+                **item,
+                "score": cosine(query_embedding, item["chunk"]["embedding"]),
+            }
+            for item in embedded_chunks
+        ]
+        results.sort(key=lambda item: item["score"], reverse=True)
+        return {"results": results[:limit], "method": "semantic"}
+
+    query_words = words(query)
+    results = []
+    for item in chunks_to_search:
+        score = len(query_words & words(item["text"]))
+        if score:
+            results.append({**item, "score": score})
+    results.sort(key=lambda item: item["score"], reverse=True)
+    return {"results": results[:limit], "method": "keyword"}

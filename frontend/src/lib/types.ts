@@ -24,6 +24,18 @@ export interface SourceDetail extends Source {
   chunks?: { page: number; chunk: number; text: string }[]
   offset: number
 }
+export interface DocumentSearchResult {
+  source_id: string
+  source_name: string
+  page: number
+  chunk: number
+  text: string
+  score: number
+}
+export interface DocumentSearchResponse {
+  method: 'semantic' | 'keyword'
+  results: DocumentSearchResult[]
+}
 export interface Metric {
   key: string
   label: string

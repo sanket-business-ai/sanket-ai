@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import PurePath
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete, func, select, text, update
@@ -35,7 +35,7 @@ from .db import (
     get_db,
     now,
 )
-from .demo import seed_demo
+from .demo import margin_demo_pack, seed_demo
 from .ingestion import (
     CONTRACTS,
     OPTIONAL_COLUMNS,
@@ -46,6 +46,7 @@ from .ingestion import (
     store_source,
 )
 from .jobs import enqueue
+from .retrieval import search as retrieve_documents
 from .schemas import (
     ConnectionRequest,
     Decision,
@@ -236,6 +237,36 @@ def sources(db: Session = Depends(get_db), user: User = Depends(current_user)):
     return [
         source_dict(s, active_ids) for s in db.scalars(select(Source).order_by(Source.created_at.desc()).limit(200))
     ]
+
+
+@app.post("/api/sources/search")
+def search_source_documents(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    query = payload.get("query")
+    if not isinstance(query, str) or not query.strip() or len(query) > 500:
+        raise HTTPException(422, "Query must contain 1 to 500 characters")
+
+    documents = list(
+        db.scalars(select(Source).where(Source.kind == "document").order_by(Source.created_at.desc(), Source.id.desc()))
+    )
+    retrieval = retrieve_documents(documents, query.strip())
+    return {
+        "method": retrieval["method"],
+        "results": [
+            {
+                "source_id": result["source"].id,
+                "source_name": result["source"].name,
+                "page": result["chunk"]["page"],
+                "chunk": result["chunk"]["chunk"],
+                "text": result["text"],
+                "score": result["score"],
+            }
+            for result in retrieval["results"]
+        ],
+    }
 
 
 @app.get("/api/sources/contracts")
@@ -458,13 +489,25 @@ def demo(payload: DemoRequest | None = None, db: Session = Depends(get_db), user
     pack = payload.pack if payload else "supply"
     if not settings().demo_enabled:
         raise HTTPException(404, "Demo loading is disabled")
+
     if db.scalar(select(Source).limit(1)):
         raise HTTPException(409, "Demo data can only be loaded into an empty workspace")
-    seeded = seed_demo(db, pack)
+    scenario = payload.scenario if payload and payload.scenario else pack
+    if payload and payload.scenario == "margin":
+        seeded = [store_source(db, data, name, kind)[0] for kind, name, data in margin_demo_pack()]
+    else:
+        seeded = seed_demo(db, pack)
     documents = sum(source.kind == "document" for source in seeded)
-    db.add(Audit(actor=user.id, event="demo.loaded", entity_id=user.id, details={"sources": len(seeded), "pack": pack}))
+    db.add(
+        Audit(
+            actor=user.id,
+            event="demo.loaded",
+            entity_id=user.id,
+            details={"sources": len(seeded), "pack": pack, "scenario": scenario},
+        )
+    )
     db.commit()
-    return {
+    result = {
         "sources": len(seeded),
         "datasets": len(seeded) - documents,
         "documents": documents,
@@ -472,6 +515,9 @@ def demo(payload: DemoRequest | None = None, db: Session = Depends(get_db), user
         "company": "HimalayanMart",
         "synthetic": True,
     }
+    if payload is None or payload.scenario is not None:
+        result["scenario"] = scenario
+    return result
 
 
 @app.post("/api/workspace/reset")

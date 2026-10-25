@@ -27,6 +27,7 @@ class InvestigationRequest(StrictModel):
 
 class DemoRequest(StrictModel):
     pack: Literal["supply", "margin"] = "supply"
+    scenario: Literal["supply", "margin"] | None = None
 
 
 class ConnectionRequest(StrictModel):

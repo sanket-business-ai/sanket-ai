@@ -16,14 +16,15 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
-from app import agent, main
+from app import agent, ingestion, main, retrieval
 from app.db import get_db, make_engine, uid
 
 
 @pytest.fixture(autouse=True)
-def fresh_rate_limits():
-    """Rate-limited models are remembered for the worker's lifetime; each test starts with none."""
+def disable_external_embeddings(monkeypatch):
     agent.EXHAUSTED.clear()
+    monkeypatch.setattr(ingestion, "embed", lambda _: None)
+    monkeypatch.setattr(retrieval, "embed", lambda _: None)
 
 
 @pytest.fixture
@@ -54,5 +55,7 @@ def workspace(monkeypatch):
 @pytest.fixture
 def seeded(workspace):
     client, factory = workspace
-    assert client.post("/api/demo").status_code == 201
+    response = client.post("/api/demo")
+    assert response.status_code == 201
+    assert response.json()["scenario"] == "supply"
     return client, factory

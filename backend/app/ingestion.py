@@ -16,6 +16,13 @@ from .config import settings
 from .db import Source
 from .retrieval import embed
 
+
+def embed_text(text: str) -> list[float] | None:
+    """Return a local embedding, or None when the configured model is unavailable."""
+    vectors = embed([text])
+    return vectors[0] if vectors else None
+
+
 CONTRACTS = {
     "orders": {
         "id": "id",
@@ -197,8 +204,8 @@ def with_embeddings(chunks):
 
     Embeddings make search find meaning, not only shared words; without them search uses keywords.
     """
-    vectors = embed([chunk["text"] for chunk in chunks])
-    if not vectors:
+    vectors = [embed_text(chunks[0]["text"])] if len(chunks) == 1 else embed([chunk["text"] for chunk in chunks])
+    if not vectors or not all(vectors):
         return chunks
     return [{**chunk, "embedding": [round(value, 5) for value in vector]} for chunk, vector in zip(chunks, vectors)]
 

@@ -111,12 +111,83 @@ def supply_pack():
         },
     ]
     docs = {
-        "supplier_incident.md": "# Supplier incident · 24 September 2026\nValley Electronics (S1) missed its 10 September shipment for P1 wireless earbuds. Customs clearance delayed receipt until 24 September. Warehouse recorded zero available stock from 10 to 23 September. This report is synthetic demo evidence, not an independently audited fact.",
-        "customer_feedback.md": "# Customer feedback · September 2026\nOperations recorded complaints about late wireless earbuds deliveries and unavailable stock in Kathmandu. Customers could still order tea and groceries. Complaint sampling is incomplete; it does not establish customer churn.",
-        "marketing_review.md": "# Marketing review · September 2026\nSearch impressions and clicks increased in the latest four weeks. There were no recorded campaign outages. Traffic alone cannot prove unchanged demand for a particular product. No historical competitor pricing data is available.",
-        "operations_review.md": "# Operations review · September 2026\nElectronics revenue declined while home and grocery order volumes were steady. Late inbound supply and inventory availability need review. Current product prices are available but historical price changes were not recorded. Margin estimates exclude taxes and unrecorded costs.",
+        "supplier_incident.md": (
+            "# Supplier incident · 24 September 2026\n"
+            "Valley Electronics (S1) promised the P1 wireless-earbud shipment for 10 September, "
+            "but customs clearance delayed receipt until 24 September. Inventory snapshots record "
+            "no P1 stock from 10 through 23 September. P1 sales were 140 units in the 28-day "
+            "baseline and 70 units in the latest 28 days. The timing is consistent with a supply "
+            "constraint, but these records do not prove how many sales would otherwise have occurred. "
+            "This report is synthetic demo evidence, not an independently audited fact."
+        ),
+        "customer_feedback.md": (
+            "# Customer feedback · September 2026\n"
+            "A small service-inbox sample from 10–23 September contains 18 complaints: 15 mention "
+            "late wireless-earbud deliveries or unavailable stock, and 3 concern other issues. "
+            "Customers could still order tea and groceries. This is a partial complaint sample, "
+            "not a count of unique affected customers, and it does not establish churn or satisfaction."
+        ),
+        "marketing_review.md": (
+            "# Marketing review · September 2026\n"
+            "Recorded daily search impressions rose from 10,000 to 11,000 and clicks from 500 to "
+            "550 between the baseline and latest four-week periods. No campaign outage is recorded. "
+            "These aggregate traffic measures do not establish product-level demand, conversion, "
+            "or the absence of competitor effects. No historical competitor pricing data is available."
+        ),
+        "operations_review.md": (
+            "# Operations review · September 2026\n"
+            "Electronics revenue declined while home and grocery order volumes were steady. "
+            "Recorded logistics expenses rose from NPR 1,500 to NPR 1,900 per day in the latest "
+            "four-week period, but no separate courier invoices are available to attribute that "
+            "increase. Current catalog prices are available; historical price changes are not. "
+            "Margin estimates exclude taxes and unrecorded costs."
+        ),
     }
     return pack_files("himalayanmart", tables, docs)
+
+
+def margin_demo_pack():
+    """Synthetic documents explaining rising revenue but falling contribution."""
+    return [
+        (
+            "document",
+            "courier_rate_notice.md",
+            (
+                "# Courier Rate Notice - October 2026\n"
+                "HimalayanMart's courier partner has increased delivery rates "
+                "by 25% effective 1 October 2026. The revised rates apply to "
+                "all standard deliveries, with additional charges for remote "
+                "locations. These higher delivery expenses reduce contribution "
+                "per order. This is synthetic demo data."
+            ).encode(),
+        ),
+        (
+            "document",
+            "supplier_price_letter.md",
+            (
+                "# Supplier Price Revision - October 2026\n"
+                "Valley Electronics has increased wholesale prices for "
+                "wireless earbuds by 12% effective 1 October 2026. Retail "
+                "prices have not changed, so the higher purchase cost reduces "
+                "the contribution earned on each unit sold. This is synthetic "
+                "demo data."
+            ).encode(),
+        ),
+        (
+            "document",
+            "finance_margin_note.md",
+            (
+                "# Finance Note - October 2026\n"
+                "HimalayanMart's revenue increased by approximately 10% "
+                "compared with the previous period, but contribution fell. "
+                "The main factors identified for this synthetic scenario are "
+                "higher courier expenses and increased supplier prices. "
+                "Management should review delivery costs and product-level "
+                "contribution before changing retail prices. This is synthetic "
+                "demo data, not audited financial information."
+            ).encode(),
+        ),
+    ]
 
 
 # Route → courier. Fictional couriers and suppliers: never put real company names on synthetic notices.

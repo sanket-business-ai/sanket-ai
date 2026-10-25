@@ -5,14 +5,50 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import func, select
 
-from app import agent
+from app import agent, retrieval
 from app.analysis import Tools
 from app.config import Settings, settings
 from app.db import Action, Audit, Investigation, Source, now
-from app.demo import demo_pack
+from app.demo import demo_pack, margin_demo_pack
 from app.ingestion import parse_upload, validate_rows
 from app.schemas import AgentConclusion
 from app.worker import monitor_due_actions, process_one
+
+
+def test_margin_demo_scenario_loads_documents(workspace):
+    client, _ = workspace
+
+    response = client.post("/api/demo", json={"scenario": "margin"})
+
+    assert response.status_code == 201
+    assert response.json()["scenario"] == "margin"
+    assert response.json()["sources"] == len(margin_demo_pack())
+
+    sources_response = client.get("/api/sources")
+    assert sources_response.status_code == 200
+
+    source_names = {source["name"] for source in sources_response.json()}
+
+    assert "courier_rate_notice.md" in source_names
+    assert "supplier_price_letter.md" in source_names
+    assert "finance_margin_note.md" in source_names
+    source_text = {
+        source["name"]: client.get(f"/api/sources/{source['id']}").json()["chunks"][0]["text"]
+        for source in sources_response.json()
+    }
+    assert "increased delivery rates by 25%" in source_text["courier_rate_notice.md"]
+    assert "increased wholesale prices" in source_text["supplier_price_letter.md"]
+    assert "revenue increased by approximately 10%" in source_text["finance_margin_note.md"]
+    assert "contribution fell" in source_text["finance_margin_note.md"]
+
+
+def test_demo_rejects_invalid_scenario_without_loading_sources(workspace):
+    client, _ = workspace
+
+    response = client.post("/api/demo", json={"scenario": "unknown"})
+
+    assert response.status_code == 422
+    assert client.get("/api/sources").json() == []
 
 
 def run_investigation(client, factory, question="Why did our sales drop in the latest month?"):
@@ -362,6 +398,154 @@ def test_malformed_pdf_and_oversize_upload_are_rejected(workspace, monkeypatch):
         client.post("/api/sources", data={"kind": "document"}, files={"file": ("big.txt", b"x" * 11)}).status_code
         == 413
     )
+
+
+def test_retrieval_falls_back_to_keyword_search(monkeypatch):
+    monkeypatch.setattr(retrieval, "_embed_query", lambda query: None)
+
+    sources = [
+        {
+            "name": "customer_feedback.md",
+            "content": {
+                "chunks": [
+                    {
+                        "text": "Customers complained about late deliveries.",
+                        "embedding": None,
+                    },
+                    {
+                        "text": "Supplier prices increased this month.",
+                        "embedding": None,
+                    },
+                ]
+            },
+        }
+    ]
+
+    result = retrieval.search(
+        sources,
+        "late deliveries",
+        limit=5,
+    )
+
+    assert result["method"] == "keyword"
+    assert len(result["results"]) == 1
+    assert "late deliveries" in result["results"][0]["text"].lower()
+
+
+def test_tools_search_documents_uses_semantic_retrieval(monkeypatch):
+    monkeypatch.setattr(retrieval, "_embed_query", lambda query: [1.0, 0.0])
+    source = SimpleNamespace(
+        id="complaint-source",
+        name="customer_feedback.md",
+        kind="document",
+        content={
+            "chunks": [
+                {
+                    "page": 1,
+                    "chunk": 1,
+                    "text": "Customers reported late deliveries and complained about courier delays.",
+                    "embedding": [0.9, 0.1],
+                }
+            ]
+        },
+    )
+
+    result = Tools([source]).search_documents("why are customers upset about deliveries")
+
+    assert result["method"] == "semantic"
+    assert len(result["matches"]) == 1
+    assert result["matches"][0]["source"] == "customer_feedback.md"
+    assert "complained about courier delays" in result["matches"][0]["excerpt"]
+
+
+def test_authenticated_source_search_returns_semantic_document_matches(workspace, monkeypatch):
+    from app import ingestion
+
+    monkeypatch.setattr(ingestion, "embed_text", lambda _: [1.0, 0.0])
+    monkeypatch.setattr(retrieval, "_embed_query", lambda _: [1.0, 0.0])
+    client, _ = workspace
+    upload = client.post(
+        "/api/sources",
+        data={"kind": "document"},
+        files={
+            "file": (
+                "customer_complaint.txt",
+                b"Customers are upset about deliveries arriving late.",
+            )
+        },
+    )
+    assert upload.status_code == 201, upload.text
+
+    response = client.post(
+        "/api/sources/search",
+        json={"query": "why are customers upset about deliveries"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["method"] == "semantic"
+    assert response.json()["results"][0]["source_name"] == "customer_complaint.txt"
+    assert "deliveries arriving late" in response.json()["results"][0]["text"]
+
+
+def test_document_upload_enforces_500_chunk_limit(monkeypatch):
+    from app import ingestion
+
+    monkeypatch.setattr(ingestion, "embed_text", lambda _: None)
+
+    with pytest.raises(ValueError, match="500 text chunks"):
+        ingestion.parse_upload(b"x" * 500_001, "large.txt", "document")
+
+
+def test_document_chunks_include_embeddings(monkeypatch):
+    from app import ingestion
+
+    monkeypatch.setattr(
+        ingestion,
+        "embed_text",
+        lambda text: [0.1, 0.2, 0.3],
+    )
+
+    content, count = ingestion.parse_upload(
+        b"Customers reported delayed deliveries.",
+        "feedback.txt",
+        "document",
+    )
+
+    assert count == 1
+    assert content["chunks"][0]["text"] == ("Customers reported delayed deliveries.")
+    assert content["chunks"][0]["embedding"] == [0.1, 0.2, 0.3]
+
+
+def test_uploaded_document_embedding_persists_in_database(workspace, monkeypatch):
+    from app import ingestion
+    from app.db import Source
+
+    monkeypatch.setattr(
+        ingestion,
+        "embed_text",
+        lambda text: [0.1, 0.2, 0.3],
+    )
+
+    client, factory = workspace
+    response = client.post(
+        "/api/sources",
+        data={"kind": "document"},
+        files={
+            "file": (
+                "feedback.txt",
+                b"Customers reported delayed deliveries.",
+            )
+        },
+    )
+
+    assert response.status_code == 201, response.text
+
+    with factory() as db:
+        source = db.query(Source).filter_by(name="feedback.txt").one()
+        chunk = source.content["chunks"][0]
+
+        assert chunk["text"] == "Customers reported delayed deliveries."
+        assert chunk["embedding"] == [0.1, 0.2, 0.3]
 
 
 @pytest.mark.parametrize(
