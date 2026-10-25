@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from .config import settings
 from .db import Source
+from .retrieval import embed
 
 CONTRACTS = {
     "orders": {
@@ -191,6 +192,17 @@ def detect_kind(data, filename):
     return max(matches, key=lambda kind: len(CONTRACTS[kind]), default=None)
 
 
+def with_embeddings(chunks):
+    """Chunks with an embedding each, or unchanged when the model is off or unavailable.
+
+    Embeddings make search find meaning, not only shared words; without them search uses keywords.
+    """
+    vectors = embed([chunk["text"] for chunk in chunks])
+    if not vectors:
+        return chunks
+    return [{**chunk, "embedding": [round(value, 5) for value in vector]} for chunk, vector in zip(chunks, vectors)]
+
+
 def parse_upload(data, filename, kind):
     if not data:
         raise ValueError("File is empty")
@@ -215,7 +227,7 @@ def parse_upload(data, filename, kind):
             raise ValueError("No readable text found. Scanned PDFs require OCR first.")
         if len(chunks) > 500:
             raise ValueError("Document exceeds 500 text chunks")
-        return {"chunks": chunks}, len(chunks)
+        return {"chunks": with_embeddings(chunks)}, len(chunks)
     if kind not in CONTRACTS:
         raise ValueError("Unknown dataset type")
     if suffix == ".csv":
@@ -271,6 +283,10 @@ def store_source(db, data, filename, kind):
     checksum = hashlib.sha256(kind.encode() + b"\0" + data).hexdigest()
     existing = db.scalar(select(Source).where(Source.checksum == checksum))
     if existing:
+        # Uploading a document again embeds it if it was stored while the embedding model was unavailable.
+        chunks = existing.content["chunks"] if kind == "document" else []
+        if chunks and not all(chunk.get("embedding") for chunk in chunks):
+            existing.content = {**existing.content, "chunks": with_embeddings(chunks)}
         return existing, False
     content, count = parse_upload(data, filename, kind)
     name = filename.replace("\\", "/").split("/")[-1][:200]

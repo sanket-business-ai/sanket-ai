@@ -6,6 +6,8 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
+from .retrieval import rank
+
 PAID = {"delivered", "completed"}
 # A fee or unit-cost rise smaller than this percentage is treated as noise.
 MATERIAL_CHANGE = 5
@@ -710,21 +712,22 @@ class Tools:
         }
 
     def search_documents(self, query="", require=None, limit=5):
-        # shortcut: lexical retrieval misses semantic matches; add embeddings when the evidence corpus grows.
-        tokens = set(re.findall(r"\w{3,}", query.lower())) - {"the", "and", "why", "our", "this", "what"}
-        scored = []
-        for source in self.sources:
-            if source.kind != "document":
-                continue
-            for chunk in source.content["chunks"]:
-                if require and not require.search(chunk["text"]):
-                    continue
-                words = set(re.findall(r"\w{3,}", chunk["text"].lower()))
-                score = len(tokens & words)
-                if score:
-                    scored.append((score, source, chunk))
+        chunks = [
+            (source, chunk)
+            for source in self.sources
+            if source.kind == "document"
+            for chunk in source.content["chunks"]
+            if not require or require.search(chunk["text"])
+        ]
+        matches, method = rank(query, chunks, limit)
         result = []
-        for score, source, chunk in sorted(scored, key=lambda item: (-item[0], item[1].name, item[2]["chunk"]))[:limit]:
+        for match in matches:
+            source, chunk = match["source"], match["chunk"]
+            found = (
+                f"Semantic similarity {match['similarity']:.2f} to the question"
+                if "similarity" in match
+                else f"Shares {match['overlap']} keyword(s) with the question"
+            )
             eid = f"E{len(self.evidence) + 1}"
             self.evidence.append(
                 {
@@ -733,7 +736,7 @@ class Tools:
                     "claim": chunk["text"],
                     "value": None,
                     "unit": None,
-                    "calculation": None,
+                    "calculation": found,
                     "sources": [
                         {
                             "id": source.id,
@@ -749,12 +752,12 @@ class Tools:
                     "source": source.name,
                     "excerpt": chunk["text"],
                     "page": chunk["page"],
-                    "score": score,
+                    "score": round(match["similarity"], 3) if "similarity" in match else match["overlap"],
                 }
             )
         return {
             "matches": result,
-            "method": "lexical keyword retrieval",
+            "method": method,
             "limitation": "Document statements are attributed claims, not independently verified facts.",
         }
 

@@ -254,9 +254,12 @@ def source_detail(source_id: str, offset: int = 0, db: Session = Depends(get_db)
     if not source:
         raise HTTPException(404, "Source not found")
     key = "chunks" if source.kind == "document" else "rows"
+    page = source.content[key][offset : offset + 100]
+    if key == "chunks":
+        page = [{k: v for k, v in chunk.items() if k != "embedding"} for chunk in page]
     return {
         **source_dict(source, {s.id for s in active_sources(db)}),
-        key: source.content[key][offset : offset + 100],
+        key: page,
         "offset": offset,
     }
 

@@ -13,7 +13,7 @@ flowchart TD
     Worker <--> LLM[Ollama / Qwen3, or a hosted OpenAI-compatible API]
     Worker --> Tools[Allowlisted read-only analysis tools]
     Tools --> DB
-    Tools --> Retrieval[Lexical document retrieval]
+    Tools --> Retrieval[Semantic document retrieval with keyword fallback]
     Worker --> Report[Evidence + hypotheses + trail + uncertainty]
     Report --> Approval[Human approval]
     Approval --> Task[Internal operations task]
@@ -38,7 +38,7 @@ All currency is NPR. Revenue includes delivered/completed orders only. Compariso
 
 A Google Sheets connection stores a tab's CSV export URL, a schedule (hourly, 6-hourly, daily or manual) and its last sync status. The worker syncs due connections on its idle cycle; **Sync now** syncs immediately. Each fetch goes through the same validation and checksum de-duplication as an upload, so only changed data creates a new version (a sheet reverted to an earlier state makes that stored version current again). Fetches are HTTPS-only, re-check every redirect hop against an allowlist (`docs.google.com`, `*.googleusercontent.com`), ignore proxy environment variables, and are bounded by the upload size limit and a 30-second timeout. Only link-shared sheets work; OAuth for private sheets, Daraz and accounting connectors are deferred.
 
-CSV and XLSX contracts are explicit. Dates must be ISO text; spreadsheet formulas are rejected. XLSX expansion, row counts, file sizes, PDF pages, and document chunks are bounded. PDF ingestion extracts text without OCR. Text retrieval ranks keyword overlap and attaches page/chunk citations. BGE-M3/Qdrant, vector retrieval, Pandas/NumPy, Olist-specific column mapping, and a separate MCP server are deferred; the working Python tools provide the extension boundary without another service or orchestration framework.
+CSV and XLSX contracts are explicit. Dates must be ISO text; spreadsheet formulas are rejected. XLSX expansion, row counts, file sizes, PDF pages, and document chunks are bounded. PDF ingestion extracts text without OCR. Document chunks are embedded with BGE-M3 through the local Ollama at upload and stored with the chunk; searches embed the question and rank chunks by cosine similarity (at least 0.5), then add keyword matches for chunks without an embedding (uploaded while the model was unavailable). Each document evidence item records how it was found. BGE-M3 is multilingual, so Romanized-Nepali text matches English questions. Without the model, retrieval falls back to keyword overlap. A vector database (Qdrant), Pandas/NumPy, Olist-specific column mapping, and a separate MCP server are deferred; the working Python tools provide the extension boundary without another service or orchestration framework.
 
 ## Approval and automation
 

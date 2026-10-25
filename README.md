@@ -23,7 +23,10 @@ Use an existing host Ollama installation:
 
 ```powershell
 ollama pull qwen3:8b
+ollama pull bge-m3      # document embeddings for semantic search (about 1.2 GB)
 ```
+
+Document search uses `bge-m3` embeddings from the local Ollama even when the planner uses a hosted model; documents are embedded when uploaded. Without the model, search falls back to keyword matching. Set `SANKET_EMBEDDING_MODEL=` (empty) to turn embeddings off.
 
 The first model download needs several GB of disk and suitable RAM. Set `SANKET_OLLAMA_MODEL` for your hardware; the model must support structured JSON responses. `auto` mode visibly falls back to deterministic analysis if the model is missing, offline, or invalid. Set `SANKET_AGENT_MODE=ollama` to require model reasoning, or `deterministic` for offline analysis.
 
@@ -150,7 +153,7 @@ cd backend
 
 This revokes existing sessions. Changing the bootstrap environment password alone does not change an existing account.
 
-Current boundaries: document retrieval is lexical; model reasoning is observational and can be wrong; confidence is qualitative, not a probability; the deterministic explanation covers two scenarios (supplier delay → stockout → revenue, and courier/supplier price rises → contribution) and leaves other domains inconclusive. Revenue difference is not automatically attributable loss. External CRM/email/workflow connectors, vector search, a separate MCP server, OCR, public signup, and multi-tenant access are deferred. Scheduled outcome checks need a complete newer 28-day window and do not prove action causality.
+Current boundaries: document retrieval is semantic only for documents uploaded while `bge-m3` was available (others match by keyword); model reasoning is observational and can be wrong; confidence is qualitative, not a probability; the deterministic explanation covers two scenarios (supplier delay → stockout → revenue, and courier/supplier price rises → contribution) and leaves other domains inconclusive. Revenue difference is not automatically attributable loss. External CRM/email/workflow connectors, vector search, a separate MCP server, OCR, public signup, and multi-tenant access are deferred. Scheduled outcome checks need a complete newer 28-day window and do not prove action causality.
 
 See [architecture and tradeoffs](docs/architecture.md) and the downloaded [Vercel React skill](docs/skills/vercel-react-best-practices/SKILL.md). The Vercel skill was sourced from the official repository through the [skills.sh listing](https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices); two relevant rule files are included under `docs/skills/`.
 
