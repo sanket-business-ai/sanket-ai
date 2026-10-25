@@ -1,10 +1,79 @@
 # SanketAI
 
-An autonomous AI business investigator for Nepalese SMEs: follow the evidence from an unusual change to its strongest supported explanation.
+An AI business investigator for Nepalese SMEs: it follows the evidence from an unusual change in your numbers to its strongest supported explanation.
 
-This monorepo implements the original proposal's investigation flow with **React + Vite + TypeScript + shadcn/ui + Tailwind CSS**, **FastAPI**, a durable Python worker, **PostgreSQL/SQLite**, and optional **Ollama/Qwen3** reasoning.
+**Demo video:** _link to be added_ · **Architecture:** [docs/architecture.md](docs/architecture.md) · **License:** [MIT](LICENSE)
 
-Included: a dashboard; question and discovery investigations; a live tool trail; competing hypotheses and counter-evidence; source-backed reports; “Challenge this conclusion”; JSON exports; validated CSV/XLSX/PDF/text ingestion; approval-gated internal tasks; scheduled KPI checks; automatic re-investigation when a target is missed; authenticated sessions; and audit history. Two synthetic HimalayanMart packs are included: a supply pack (eight datasets, four reports) and a margin pack (nine datasets, three documents).
+## The problem
+
+A small online seller in Nepal sees sales drop just before Dashain, or margin fall while revenue grows. The answer is usually spread across several places: the orders export, stock counts, supplier shipments, courier invoices, ad spend, and a supplier's email. Owners rarely have an analyst, so they guess, often wrongly. A chatbot that answers from general knowledge does not help, because the cause is in *their* data.
+
+## What SanketAI does
+
+You upload your business data (CSV/XLSX datasets plus PDFs, text or Markdown documents such as supplier letters and complaint logs) and ask a question in plain language, for example “Why did our sales drop just before Dashain?”. SanketAI then:
+
+1. **Measures** what changed, comparing the latest 28 days with the 28 days before.
+2. **Investigates** like an analyst: the AI agent forms competing hypotheses and chooses read-only analysis tools (inventory, supplier shipments, deliveries, courier fees, supplier prices, marketing, customers, document search), and each tool adds numbered evidence.
+3. **Challenges** its own leading explanation: it looks for counter-evidence, and every hypothesis must cite evidence IDs that were actually collected.
+4. **Reports** the strongest supported explanation with a causal chain, competing hypotheses, what is still unknown, and a link from every claim to the source row or document excerpt behind it. Margin questions also get a waterfall chart showing where the contribution went.
+5. **Acts and follows up**: you can approve a recommended action as an internal task. SanketAI checks the KPI when a new 28-day window of data arrives and opens a fresh investigation if the target is missed.
+
+Example from the included test data: asked why margin fell while revenue rose 16%, SanketAI measures that Peakline Parcel's fee per delivery rose 32.4% (NPR 46,134) and Everest Tech Traders' unit costs rose 10% (NPR 77,804), finds both parties' price letters among the documents, and rejects the discount that the finance note blames.
+
+Also included: discovery runs (“Find what is going wrong”) without a question, a live trail of each step, “Challenge conclusion” re-runs, JSON report export, live Google Sheets connections, approval-gated tasks, scheduled KPI checks, authenticated sessions, and an audit history.
+
+## How AI is used
+
+SanketAI's core logic runs on AI output; the model does not just write the text shown to the user.
+
+- **Planning:** a large language model (local Ollama, or a hosted OpenAI-compatible API such as Groq with `openai/gpt-oss-120b`) returns schema-validated JSON choosing the next tool, its query and the current hypotheses. The worker executes that choice.
+- **Conclusion:** the model reasons over a compact index of all collected evidence and a deterministic draft, and returns a structured conclusion. SanketAI rejects it if it cites evidence that was never collected, and caps its confidence at medium.
+- **Semantic retrieval:** `bge-m3` embeddings (multilingual, so Romanized-Nepali complaints match English questions) decide which document passages become evidence.
+
+If the model is unavailable or its output fails validation, `auto` mode falls back visibly to a deterministic analysis, and the report says which engine produced it.
+
+### AI usage disclosure
+
+AI output is consumed programmatically in these exact places:
+
+| Where | What happens to the AI output |
+| --- | --- |
+| `backend/app/agent.py` · `model_json()` and `hosted_json()` | Call the model and parse its reply into the Pydantic schemas `AgentStep` and `AgentConclusion` (`backend/app/schemas.py`); invalid output raises and triggers the fallback. |
+| `backend/app/agent.py` · `investigate()` | The planning loop reads `step.tool` and `step.query` from the model and runs that tool through `Tools.call()` (`backend/app/analysis.py`), which only accepts names in `TOOL_NAMES`; `step.hypotheses` are recorded in the trail. |
+| `backend/app/agent.py` · `validate_conclusion()` | Checks the model's conclusion (every cited evidence ID must exist, supported and rejected hypotheses need evidence, confidence capped at medium); the result becomes the report's root cause, hypotheses, unknowns and recommended action. |
+| `backend/app/worker.py` · `process_one()` | When the report is actionable, the model's `recommended_action` becomes the title of a pending task that waits for human approval. |
+| `backend/app/retrieval.py` · `embed()` and `rank()`; `backend/app/ingestion.py` · `with_embeddings()` | `bge-m3` vectors are stored with each document chunk at upload; `rank()` scores chunks by cosine similarity to the question, and the top matches become evidence. |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Files[CSV / XLSX / PDF / text<br/>Google Sheets] --> Ingest[Validation and<br/>immutable source versions]
+    Ingest --> DB[(PostgreSQL / SQLite)]
+    UI[React web app] --> API[FastAPI API]
+    API --> Queue[Investigation queue]
+    Queue --> Worker[Python worker]
+    Worker <--> LLM[LLM: Ollama or hosted API]
+    Worker --> Tools[Allowlisted read-only<br/>analysis tools]
+    Tools --> DB
+    Tools --> Search[bge-m3 document search]
+    Worker --> Report[Evidence-backed report]
+    Report --> Task[Approved task and<br/>KPI follow-up]
+```
+
+The API never runs an investigation itself: it snapshots the active sources, queues the job and returns at once. A separate worker claims the job with a lease, runs the agent, and commits each tool step so the browser can show progress live. Tools are fixed Python functions over the stored data; the model can only choose among them, never run code, SQL or URLs. See [docs/architecture.md](docs/architecture.md) for the full design, data rules and trade-offs.
+
+## Technology
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 19, Vite, TypeScript, Tailwind CSS v4, shadcn/ui (Radix), TanStack Query |
+| Backend | Python 3.14, FastAPI, SQLAlchemy, Alembic, Pydantic |
+| Worker | Python process with lease-based job claiming and scheduled monitoring |
+| Database | PostgreSQL (Docker/production) or SQLite (local development) |
+| AI | Ollama (`qwen3`) or any OpenAI-compatible API (tested with Groq `openai/gpt-oss-120b`); `bge-m3` embeddings via Ollama |
+| Testing | pytest, Playwright, Ruff, Prettier; GitHub Actions CI |
+| Deployment | Docker Compose with an nginx frontend |
 
 ## Run with Docker
 
@@ -18,6 +87,8 @@ docker compose up --build -d
 Open **http://localhost:5173**. The initial email is `founder@sanketai.local`; the generated password is `SANKET_ADMIN_PASSWORD` in your local `.env`. The setup script preserves an existing file. Change the email/password before the first startup if desired. No default production password is supplied.
 
 Sign in and select **Load demo evidence**, then ask “Why did our sales drop?” or select **Find what is going wrong**. Alternatively, select **Load margin demo** and ask “Revenue increased, so why is our margin falling?”. Each pack loads only into an empty workspace. The demos are explicitly synthetic; the couriers and suppliers are fictional. Actions propose internal tasks; they do not modify a real CRM or notify a team.
+
+For a realistic end-to-end test, build the HimalayanMart Gadgets dataset (see [Native development](#native-development)), drag one scenario folder onto the Sources page, and ask its question. The strongest folders are `2_margin_squeeze` (“Revenue increased, so why is our margin falling?”) and `5_dashain_stockout` (“Why did our sales drop just before Dashain?”). The zip's `ANSWER_KEY.md` lists what was planted in each folder so you can check the result.
 
 Use an existing host Ollama installation:
 
@@ -132,7 +203,7 @@ npm run test:e2e
 docker compose config --quiet
 ```
 
-Playwright starts isolated API/worker/frontend services on ports 8011/5174 with an expendable SQLite database in `.cache`; it never touches your configured business database. It exercises sign-in, the demo, investigation, source inspection, approval, stale-data protection, challenge, and mobile navigation. GitHub Actions runs the Python, frontend, and browser checks.
+Playwright starts isolated API/worker/frontend services on ports 8011/5174 with an expendable SQLite database in `.cache`; it never touches your configured business database. It exercises sign-in, the demo, investigation, source inspection, approval, stale-data protection, challenge, the margin waterfall chart, and mobile navigation. GitHub Actions runs the Python, frontend, and browser checks.
 
 ## Deployment and boundaries
 
@@ -153,9 +224,27 @@ cd backend
 
 This revokes existing sessions. Changing the bootstrap environment password alone does not change an existing account.
 
-Current boundaries: document retrieval is semantic only for documents uploaded while `bge-m3` was available (others match by keyword); model reasoning is observational and can be wrong; confidence is qualitative, not a probability; the deterministic explanation covers two scenarios (supplier delay → stockout → revenue, and courier/supplier price rises → contribution) and leaves other domains inconclusive. Revenue difference is not automatically attributable loss. External CRM/email/workflow connectors, vector search, a separate MCP server, OCR, public signup, and multi-tenant access are deferred. Scheduled outcome checks need a complete newer 28-day window and do not prove action causality.
-
 See [architecture and tradeoffs](docs/architecture.md) and the downloaded [Vercel React skill](docs/skills/vercel-react-best-practices/SKILL.md). The Vercel skill was sourced from the official repository through the [skills.sh listing](https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices); two relevant rule files are included under `docs/skills/`.
+
+## Limitations
+
+- **Two explained scenarios.** The deterministic engine explains supplier delay → stockout → revenue and courier or supplier price rises → lower contribution. Other questions (late deliveries, ad spend, cash-on-delivery refusals, churn) stay inconclusive rather than receiving an invented cause.
+- **The model can over-claim.** Evidence IDs in a model conclusion are validated, but its judgement is not. On questions outside the two scenarios it can still mark a weakly supported explanation as supported; in our monsoon test pack it blamed supplier delays that did not cause the late deliveries. Numbers written in its prose are not checked; the evidence tab and margin chart hold the calculated figures.
+- **Observational, not causal.** Confidence is qualitative and capped at medium. A revenue difference is an observed change, not attributable loss, and a met KPI target does not prove the task caused it.
+- **Strict data format.** Uploads must use SanketAI's column names, ISO dates and supported status values; there is no column-mapping step yet. At least 56 days of orders are needed for two comparable 28-day windows.
+- **Semantic search needs the local model.** Documents uploaded while `bge-m3` was unavailable match by keyword until they are uploaded again. Scanned PDFs need OCR first.
+- **Hosted models see your data.** With a hosted provider, prompts include business data from your sources. Free tiers are rate-limited; SanketAI waits briefly, then falls back to deterministic analysis.
+- **Single business.** One shared workspace and one administrator; no public signup or tenant isolation.
+
+## Future improvements
+
+- A delivery-performance scenario (route, courier and monsoon delays) and a marketing-return scenario, so those questions get measured explanations instead of inconclusive ones.
+- A column-mapping wizard that accepts a seller's own export headers and common date formats.
+- Bikram Sambat dates and festival-aware comparisons (this Dashain against last Dashain).
+- Connectors for Daraz and accounting software, and private Google Sheets through sign-in.
+- OCR for scanned invoices and receipts.
+- Nepali-language questions and interface.
+- Multiple businesses and team accounts.
 
 ## License
 
