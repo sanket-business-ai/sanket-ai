@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     # Free tiers cap tokens per request; Groq counts about 3.2 encoded characters per token, so 18,000
     # characters stays under its 8,000-token limit.
     llm_max_prompt_chars: int = 18000
+    # Comma-separated models on the same provider, tried in order when the previous one is rate-limited or down.
+    llm_fallback_models: str = ""
     agent_mode: str = "auto"
     max_agent_steps: int = 10
     model_timeout: int = 60
@@ -59,6 +61,11 @@ class Settings(BaseSettings):
             if self.demo_enabled:
                 raise ValueError("Disable demo seeding in production")
         return self
+
+    @property
+    def llm_models(self):
+        extra = [model.strip() for model in self.llm_fallback_models.split(",") if model.strip()]
+        return list(dict.fromkeys([self.llm_model, *extra]))
 
     @property
     def model_name(self):

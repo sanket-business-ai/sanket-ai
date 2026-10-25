@@ -139,3 +139,61 @@ def test_hosted_provider_configuration_is_validated():
     with pytest.raises(ValueError, match="llm_provider"):
         Settings(llm_provider="mystery")
     assert Settings(llm_provider="openai", agent_mode="deterministic", llm_api_key="").agent_mode == "deterministic"
+
+
+def rotation(monkeypatch, first_response):
+    """A first hosted model answering with `first_response` and a second model that plans `finish`."""
+    calls = []
+
+    def handler(request):
+        model = json.loads(request.content)["model"]
+        calls.append(model)
+        if model == "test-model":
+            return first_response
+        content = json.dumps({"rationale": "Answered by the backup.", "tool": "finish"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    hosted(monkeypatch, handler)
+    monkeypatch.setattr(settings(), "llm_fallback_models", "backup-model, test-model")
+    return calls
+
+
+def plan():
+    return agent.model_json(AgentStep, [{"role": "user", "content": "Plan the investigation."}])
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(429, headers={"retry-after": "7200"}, json={"error": {"message": "daily limit reached"}}),
+        httpx.Response(503, json={"error": {"message": "over capacity"}}),
+    ],
+)
+def test_an_unavailable_model_hands_over_to_the_next(monkeypatch, response):
+    calls = rotation(monkeypatch, response)
+    assert plan().rationale == "Answered by the backup."
+    assert calls == ["test-model", "backup-model"]
+    assert agent.ANSWERED.get() == ("hosted", "backup-model")
+
+
+def test_an_exhausted_model_is_skipped_until_its_limit_resets(monkeypatch):
+    calls = rotation(monkeypatch, httpx.Response(429, headers={"retry-after": "7200"}, json={}))
+    plan()
+    plan()
+    assert calls == ["test-model", "backup-model", "backup-model"], "the daily-limited model is not retried"
+
+
+def test_a_bad_request_does_not_switch_models(monkeypatch):
+    calls = rotation(monkeypatch, httpx.Response(400, json={"error": {"message": "bad schema"}}))
+    with pytest.raises(httpx.HTTPStatusError):
+        plan()
+    assert calls == ["test-model"]
+
+
+def test_when_every_model_is_exhausted_the_call_fails_for_the_deterministic_fallback(monkeypatch):
+    hosted(monkeypatch, lambda request: httpx.Response(429, headers={"retry-after": "7200"}, json={}))
+    monkeypatch.setattr(settings(), "llm_fallback_models", "backup-model")
+    with pytest.raises(httpx.HTTPStatusError):
+        plan()
+    with pytest.raises(ValueError, match="rate limit"):
+        plan()

@@ -5,6 +5,7 @@ os.environ["SANKET_ADMIN_PASSWORD"] = "test-only-password-12345"
 os.environ["SANKET_AGENT_MODE"] = "deterministic"
 os.environ["SANKET_LLM_PROVIDER"] = "ollama"
 os.environ["SANKET_MAX_AGENT_STEPS"] = "10"
+os.environ["SANKET_LLM_FALLBACK_MODELS"] = ""
 os.environ["SANKET_EMBEDDING_MODEL"] = ""  # tests never call Ollama; retrieval tests inject embeddings
 os.environ["SANKET_DATABASE_URL"] = "sqlite:///" + str(
     Path(__file__).resolve().parents[2] / ".cache/test-bootstrap.db"
@@ -15,8 +16,14 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
-from app import main
+from app import agent, main
 from app.db import get_db, make_engine, uid
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limits():
+    """Rate-limited models are remembered for the worker's lifetime; each test starts with none."""
+    agent.EXHAUSTED.clear()
 
 
 @pytest.fixture

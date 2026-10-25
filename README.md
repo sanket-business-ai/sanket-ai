@@ -38,7 +38,7 @@ AI output is consumed programmatically in these exact places:
 
 | Where | What happens to the AI output |
 | --- | --- |
-| `backend/app/agent.py` · `model_json()` and `hosted_json()` | Call the model and parse its reply into the Pydantic schemas `AgentStep` and `AgentConclusion` (`backend/app/schemas.py`); invalid output raises and triggers the fallback. |
+| `backend/app/agent.py` · `model_json()`, `hosted_models_json()` and `hosted_json()` | Call the model (moving to the next model in `SANKET_LLM_FALLBACK_MODELS` when one is rate-limited or down) and parse its reply into the Pydantic schemas `AgentStep` and `AgentConclusion` (`backend/app/schemas.py`); invalid output raises and triggers the fallback. |
 | `backend/app/agent.py` · `investigate()` | The planning loop reads `step.tool` and `step.query` from the model and runs that tool through `Tools.call()` (`backend/app/analysis.py`), which only accepts names in `TOOL_NAMES`; `step.hypotheses` are recorded in the trail. |
 | `backend/app/agent.py` · `validate_conclusion()` | Checks the model's conclusion (every cited evidence ID must exist, supported and rejected hypotheses need evidence, confidence capped at medium); the result becomes the report's root cause, hypotheses, unknowns and recommended action. |
 | `backend/app/worker.py` · `process_one()` | When the report is actionable, the model's `recommended_action` becomes the title of a pending task that waits for human approval. |
@@ -109,9 +109,10 @@ SANKET_LLM_BASE_URL=https://api.groq.com/openai/v1
 SANKET_LLM_API_KEY=<your key; never commit it>
 SANKET_LLM_MODEL=openai/gpt-oss-120b
 SANKET_LLM_REASONING_EFFORT=low
+SANKET_LLM_FALLBACK_MODELS=openai/gpt-oss-20b
 ```
 
-Investigation prompts, including business data from your sources, are then sent to that provider; check its data-use terms before uploading real data. Responses use strict JSON-schema output (set `SANKET_LLM_STRICT_SCHEMA=false` for providers that do not support it). Free tiers limit tokens per minute: SanketAI waits up to 60 seconds when the provider returns `Retry-After`, and otherwise falls back visibly to deterministic analysis. Evidence IDs in a model conclusion are validated, but numbers written in its prose are not; the margin bridge and evidence tab hold the calculated figures.
+Investigation prompts, including business data from your sources, are then sent to that provider; check its data-use terms before uploading real data. Responses use strict JSON-schema output (set `SANKET_LLM_STRICT_SCHEMA=false` for providers that do not support it). Free tiers limit tokens per minute: SanketAI waits up to 60 seconds when the provider returns `Retry-After`. When a model is still rate-limited (for example after Groq's daily limit) or down, the request moves to the next model in `SANKET_LLM_FALLBACK_MODELS`, and SanketAI skips the exhausted model until the provider says it resets; the report names the model that answered. On Groq, `openai/gpt-oss-20b` gave the same answers as `openai/gpt-oss-120b` on the margin and Dashain test packs. When every model is exhausted, SanketAI falls back visibly to deterministic analysis. Evidence IDs in a model conclusion are validated, but numbers written in its prose are not; the margin bridge and evidence tab hold the calculated figures.
 
 ```powershell
 docker compose logs -f api worker

@@ -1,3 +1,4 @@
+import contextvars
 import copy
 import json
 import logging
@@ -50,10 +51,45 @@ ADVERSARIAL = {
 }
 
 
+# The engine and model that answered the latest model call, so a report names the model that actually ran.
+ANSWERED = contextvars.ContextVar("answered", default=None)
+# Hosted models that hit a rate limit, mapped to the time.monotonic() when the provider said to try again.
+EXHAUSTED = {}
+
+
 def model_json(schema, messages):
     config = settings()
     if config.llm_provider == "openai":
-        return hosted_json(schema, messages, config)
+        return hosted_models_json(schema, messages, config)
+    result = ollama_json(schema, messages, config)
+    ANSWERED.set(("ollama", config.ollama_model))
+    return result
+
+
+def hosted_models_json(schema, messages, config):
+    """Try each configured hosted model in order, moving on when one is rate-limited (say a daily limit) or down."""
+    available = [model for model in config.llm_models if EXHAUSTED.get(model, 0) <= time.monotonic()]
+    if not available:
+        raise ValueError("Every configured hosted model is at its rate limit")
+    for model in available:
+        try:
+            result = hosted_json(schema, messages, config, model)
+        except httpx.HTTPError as error:
+            limited = isinstance(error, httpx.HTTPStatusError) and error.response.status_code == 429
+            down = isinstance(error, httpx.TransportError) or (
+                isinstance(error, httpx.HTTPStatusError) and error.response.status_code >= 500
+            )
+            if limited:
+                EXHAUSTED[model] = time.monotonic() + (retry_after(error.response) or 60)
+            if not (limited or down) or model == available[-1]:
+                raise
+            logger.warning("Hosted model %s unavailable (%s); trying the next model", model, type(error).__name__)
+            continue
+        ANSWERED.set(("hosted", model))
+        return result
+
+
+def ollama_json(schema, messages, config):
     with httpx.Client(timeout=config.model_timeout, trust_env=False) as client:
         response = client.post(
             config.ollama_url.rstrip("/") + "/api/chat",
@@ -166,13 +202,13 @@ def evidence_index(evidence, first, limit):
     return lines
 
 
-def hosted_json(schema, messages, config):
+def hosted_json(schema, messages, config, model=None):
     """OpenAI-compatible chat completions with a JSON schema response format."""
     response_schema = {"name": schema.__name__, "schema": schema.model_json_schema()}
     if config.llm_strict_schema:
         response_schema.update(schema=strict_schema(schema), strict=True)
     body = {
-        "model": config.llm_model,
+        "model": model or config.llm_model,
         "messages": fit(messages, config.llm_max_prompt_chars),
         "temperature": 0,
         # Reasoning models spend part of this budget before writing the JSON answer.
@@ -714,6 +750,7 @@ def investigate(sources, question, mode, emit, challenged=False):
     results = {}
     executed = set()
     config = settings()
+    ANSWERED.set(None)
     using_model = config.agent_mode != "deterministic"
     messages = [
         {"role": "system", "content": SYSTEM},
@@ -836,6 +873,7 @@ def investigate(sources, question, mode, emit, challenged=False):
     if not baseline_valid:
         conclusion["confidence"] = "low"
         conclusion["unknowns"] = list(dict.fromkeys(conclusion["unknowns"] + tools.coverage()))
+    answered = ANSWERED.get() or (("hosted" if config.llm_provider == "openai" else "ollama"), config.model_name)
     report = {
         **conclusion,
         "evidence": tools.evidence,
@@ -854,9 +892,14 @@ def investigate(sources, question, mode, emit, challenged=False):
         },
         "scenario": scenario,
         "margin_bridge": results.get("get_margin_bridge"),
-        "engine": ("hosted" if config.llm_provider == "openai" else "ollama") if using_model else "deterministic",
-        "model": config.model_name if using_model else None,
-        "model_notice": model_error,
+        "engine": answered[0] if using_model else "deterministic",
+        "model": answered[1] if using_model else None,
+        "model_notice": model_error
+        or (
+            f"{config.llm_model} was at its rate limit or unavailable, so {answered[1]} answered instead."
+            if using_model and answered[1] != config.model_name
+            else None
+        ),
         "challenged": challenged,
         "coverage_issues": tools.coverage(),
         "actionable": baseline_valid and conclusion["confidence"] != "low",
