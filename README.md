@@ -2,7 +2,7 @@
 
 An AI business investigator for Nepalese SMEs: it follows the evidence from an unusual change in your numbers to its strongest supported explanation.
 
-**Demo video:** _link to be added_ · **Architecture:** [docs/architecture.md](docs/architecture.md) · **License:** [MIT](LICENSE)
+**Architecture:** [docs/architecture.md](docs/architecture.md) · **License:** [MIT](LICENSE)
 
 ## The problem
 
