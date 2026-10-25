@@ -50,21 +50,23 @@ def words(text):
 
 
 def rank(query, chunks, limit=5):
-    """Best (source, chunk) pairs for the query.
+    """Best (source, chunk) pairs for the query, or for any of several queries given as a list.
 
     Chunks with embeddings are ranked by meaning; chunks without one (uploaded while embeddings were off)
-    are ranked by shared words after them. Returns matches as dicts with `similarity` or `overlap`.
+    are ranked by shared words after them. With several queries each chunk keeps its best score, so a
+    chunk is cited once. Returns matches as dicts with `similarity` or `overlap`.
     """
-    tokens = words(query) - STOP_WORDS
-    query_vector = None
+    queries = [query] if isinstance(query, str) else query
+    tokens = [words(q) - STOP_WORDS for q in queries]
+    query_vectors = None
     if any(chunk.get("embedding") for _, chunk in chunks):
-        vectors = embed([query])
-        query_vector = vectors[0] if vectors else None
+        query_vectors = embed(queries)
     semantic, keyword = [], []
     for source, chunk in chunks:
-        overlap = len(tokens & words(chunk["text"]))
-        if query_vector and chunk.get("embedding"):
-            similarity = cosine(query_vector, chunk["embedding"])
+        text = words(chunk["text"])
+        overlap = max(len(t & text) for t in tokens)
+        if query_vectors and chunk.get("embedding"):
+            similarity = max(cosine(vector, chunk["embedding"]) for vector in query_vectors)
             if similarity >= MIN_SIMILARITY:
                 semantic.append({"source": source, "chunk": chunk, "similarity": similarity, "overlap": overlap})
         elif overlap:
