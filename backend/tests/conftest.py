@@ -24,9 +24,7 @@ from app.db import get_db, make_engine, uid
 def disable_external_embeddings(monkeypatch):
     agent.EXHAUSTED.clear()
     monkeypatch.setattr(ingestion, "embed", lambda _: None)
-    monkeypatch.setattr(ingestion, "embed_text", lambda _: None)
     monkeypatch.setattr(retrieval, "embed", lambda _: None)
-    monkeypatch.setattr(retrieval, "_embed_query", lambda _: None)
 
 
 @pytest.fixture

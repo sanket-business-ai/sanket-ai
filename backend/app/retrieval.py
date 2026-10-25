@@ -27,7 +27,7 @@ def embed(texts):
                 )
                 response.raise_for_status()
                 vectors += response.json()["embeddings"]
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+    except httpx.HTTPError, ValueError, KeyError, TypeError:
         return None
     return vectors if len(vectors) == len(texts) and all(vectors) else None
 
@@ -61,7 +61,11 @@ def rank(query, chunks, limit=5):
     tokens = [words(item) - STOP_WORDS for item in queries]
     query_vectors = None
     if any(chunk.get("embedding") for _, chunk in chunks):
-        query_vectors = embed(queries)
+        if isinstance(query, str):
+            vector = _embed_query(query)
+            query_vectors = [vector] if vector else None
+        else:
+            query_vectors = embed(queries)
     semantic, keyword = [], []
     for source, chunk in chunks:
         text = words(chunk["text"])
@@ -69,19 +73,18 @@ def rank(query, chunks, limit=5):
         if query_vectors and chunk.get("embedding"):
             similarity = max(cosine(vector, chunk["embedding"]) for vector in query_vectors)
             if similarity >= MIN_SIMILARITY:
-                semantic.append(
-                    {"source": source, "chunk": chunk, "similarity": similarity, "overlap": overlap}
-                )
+                semantic.append({"source": source, "chunk": chunk, "similarity": similarity, "overlap": overlap})
         elif overlap:
             keyword.append({"source": source, "chunk": chunk, "overlap": overlap})
     semantic.sort(key=lambda match: (-match["similarity"], match["source"].name, match["chunk"]["chunk"]))
     keyword.sort(key=lambda match: (-match["overlap"], match["source"].name, match["chunk"]["chunk"]))
     matches = (semantic + keyword)[:limit]
     used = {"semantic" if "similarity" in match else "keyword" for match in matches}
+    semantic_method = f"semantic ({settings().embedding_model})" if settings().embedding_model else "semantic"
     method = (
-        f"semantic ({settings().embedding_model}) and keyword"
+        f"{semantic_method} and keyword"
         if used == {"semantic", "keyword"}
-        else f"semantic ({settings().embedding_model})"
+        else semantic_method
         if used == {"semantic"}
         else "lexical keyword retrieval"
     )

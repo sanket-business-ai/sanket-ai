@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
   ArrowRight,
+  Bot,
   ChevronRight,
   Download,
   FileText,
@@ -299,10 +300,23 @@ export default function InvestigationView() {
                 <div className="space-y-6">
                   <Card className="root-cause-card">
                     <CardHeader>
-                      <p className="eyebrow flex items-center gap-2 text-primary">
-                        <ShieldCheck size={16} />
-                        STRONGEST SUPPORTED EXPLANATION
-                      </p>
+                      <div className="flex items-start gap-3">
+                        <span className="rounded-xl bg-primary/10 p-2.5 text-primary">
+                          <Bot size={20} />
+                        </span>
+                        <div className="space-y-2">
+                          <Badge variant={report.engine === 'deterministic' ? 'secondary' : 'default'}>
+                            <Sparkles size={12} />
+                            {report.engine === 'deterministic'
+                              ? 'SanketAI evidence response'
+                              : `${report.engine === 'hosted' ? 'Hosted' : 'Local'} AI agent response`}
+                          </Badge>
+                          <p className="eyebrow flex items-center gap-2 text-primary">
+                            <ShieldCheck size={16} />
+                            STRONGEST SUPPORTED EXPLANATION
+                          </p>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <p className="text-lg font-medium leading-8 tracking-tight">
@@ -380,6 +394,10 @@ export default function InvestigationView() {
                       job.actions.map((action) => <ActionCard key={action.id} action={action} />)
                     ) : (
                       <Card className="p-5">
+                        <p className="mb-3 flex items-center gap-2 text-xs font-semibold text-primary">
+                          <Sparkles size={14} />
+                          Suggested next step from this investigation
+                        </p>
                         <p className="text-sm leading-7">{report.recommended_action}</p>
                         <p className="mt-3 text-xs leading-5 text-muted-foreground">
                           Collect stronger evidence before creating an operational action.

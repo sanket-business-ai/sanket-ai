@@ -427,17 +427,6 @@ class Tools:
         result["limitation"] = "Aggregate traffic does not prove stable product demand or conversion."
         return result
 
-<<<<<<< HEAD
-    def search_documents(self, query=""):
-        retrieval = retrieve_documents(
-            [source for source in self.sources if source.kind == "document"],
-            query,
-        )
-        result = []
-        for match in retrieval["results"]:
-            source = match["source"]
-            chunk = match["chunk"]
-=======
     def get_margin_bridge(self, query=""):
         current, previous = self.contribution(), self.contribution(previous=True)
         if not current or not previous:

@@ -1,12 +1,11 @@
 import json
 from datetime import date, timedelta
 from types import SimpleNamespace
-from app import retrieval
 
 import pytest
 from sqlalchemy import func, select
 
-from app import agent
+from app import agent, retrieval
 from app.analysis import Tools
 from app.config import Settings, settings
 from app.db import Action, Audit, Investigation, Source, now
@@ -401,7 +400,6 @@ def test_malformed_pdf_and_oversize_upload_are_rejected(workspace, monkeypatch):
     )
 
 
-<<<<<<< HEAD
 def test_retrieval_falls_back_to_keyword_search(monkeypatch):
     monkeypatch.setattr(retrieval, "_embed_query", lambda query: None)
 
@@ -548,7 +546,8 @@ def test_uploaded_document_embedding_persists_in_database(workspace, monkeypatch
 
         assert chunk["text"] == "Customers reported delayed deliveries."
         assert chunk["embedding"] == [0.1, 0.2, 0.3]
-=======
+
+
 @pytest.mark.parametrize(
     ("question", "grounded"),
     [("Why did our sales drop in the latest month?", True), ("Why did customer churn rise last month?", False)],
@@ -634,4 +633,3 @@ def test_a_report_names_the_backup_model_that_answered(seeded, monkeypatch):
     assert (
         report["model_notice"] == "main-model was at its rate limit or unavailable, so backup-model answered instead."
     )
->>>>>>> 5d018ad3a5674335f0c2c33a7a7b36e3f0f1f86b

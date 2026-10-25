@@ -507,15 +507,18 @@ def demo(payload: DemoRequest | None = None, db: Session = Depends(get_db), user
         )
     )
     db.commit()
-    return {
+    result = {
         "sources": len(seeded),
         "datasets": len(seeded) - documents,
         "documents": documents,
         "pack": pack,
-        "scenario": scenario,
         "company": "HimalayanMart",
         "synthetic": True,
     }
+    if payload is None or payload.scenario is not None:
+        result["scenario"] = scenario
+    return result
+
 
 @app.post("/api/workspace/reset")
 def reset_workspace(payload: ResetRequest, db: Session = Depends(get_db), user: User = Depends(current_user)):

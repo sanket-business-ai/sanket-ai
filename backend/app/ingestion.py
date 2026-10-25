@@ -17,7 +17,6 @@ from .db import Source
 from .retrieval import embed
 
 
-
 def embed_text(text: str) -> list[float] | None:
     """Return a local embedding, or None when the configured model is unavailable."""
     vectors = embed([text])
@@ -205,12 +204,8 @@ def with_embeddings(chunks):
 
     Embeddings make search find meaning, not only shared words; without them search uses keywords.
     """
-    vectors = (
-        [embed_text(chunks[0]["text"])]
-        if len(chunks) == 1
-        else embed([chunk["text"] for chunk in chunks])
-    )
-    if not vectors:
+    vectors = [embed_text(chunks[0]["text"])] if len(chunks) == 1 else embed([chunk["text"] for chunk in chunks])
+    if not vectors or not all(vectors):
         return chunks
     return [{**chunk, "embedding": [round(value, 5) for value in vector]} for chunk, vector in zip(chunks, vectors)]
 
@@ -234,7 +229,7 @@ def parse_upload(data, filename, kind):
         for page, text in pages:
             text = text.replace("\x00", "").strip()
             for start in range(0, len(text), CHUNK_STEP):
-chunks.append({"page": page, "chunk": len(chunks) + 1, "text": text[start : start + CHUNK_SIZE]})
+                chunks.append({"page": page, "chunk": len(chunks) + 1, "text": text[start : start + CHUNK_SIZE]})
         if not chunks:
             raise ValueError("No readable text found. Scanned PDFs require OCR first.")
         if len(chunks) > 500:

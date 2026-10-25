@@ -14,10 +14,8 @@ import {
   Trash2,
   UploadCloud,
 } from 'lucide-react'
-import { api, post } from '@/lib/api'
-import type { DocumentSearchResponse, Source, System } from '@/lib/types'
-import { download } from '@/lib/api'
-import type { Contracts, DemoPack, DemoResult } from '@/lib/types'
+import { api, download, post } from '@/lib/api'
+import type { Contracts, DemoPack, DemoResult, DocumentSearchResponse, Source, System } from '@/lib/types'
 import { dateTime, number } from '@/lib/utils'
 import { Empty, ErrorState, Loading, PageHeading } from '@/components/shared'
 import { BulkUpload } from '@/components/BulkUpload'
