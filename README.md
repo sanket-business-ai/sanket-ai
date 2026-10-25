@@ -26,11 +26,11 @@ Also included: discovery runs (“Find what is going wrong”) without a questio
 
 SanketAI's core logic runs on AI output; the model does not just write the text shown to the user.
 
-- **Planning:** a large language model (local Ollama, or a hosted OpenAI-compatible API such as Groq with `openai/gpt-oss-120b`) returns schema-validated JSON choosing the next tool, its query and the current hypotheses. The worker executes that choice.
+- **Planning:** a large language model (local Ollama, or a hosted OpenAI-compatible API such as Groq with `openai/gpt-oss-120b`) returns schema-validated JSON choosing the next tool, its query and the current hypotheses. The worker executes that choice. Setting `SANKET_MAX_AGENT_STEPS=0` skips planning: the tools run in a fixed order and the model makes one call, for the conclusion, which suits free-tier limits.
 - **Conclusion:** the model reasons over a compact index of all collected evidence and a deterministic draft, and returns a structured conclusion. SanketAI rejects it if it cites evidence that was never collected, and caps its confidence at medium.
 - **Semantic retrieval:** `bge-m3` embeddings (multilingual, so Romanized-Nepali complaints match English questions) decide which document passages become evidence.
 
-If the model is unavailable or its output fails validation, `auto` mode falls back visibly to a deterministic analysis, and the report says which engine produced it.
+If the hosted model hits its rate limit (for example Groq's daily limit), the request moves to a backup model (`openai/gpt-oss-20b`). If no model is available or the output fails validation, `auto` mode falls back visibly to a deterministic analysis. The report always says which engine and model produced it.
 
 ### AI usage disclosure
 
@@ -38,7 +38,7 @@ AI output is consumed programmatically in these exact places:
 
 | Where | What happens to the AI output |
 | --- | --- |
-| `backend/app/agent.py` · `model_json()` and `hosted_json()` | Call the model and parse its reply into the Pydantic schemas `AgentStep` and `AgentConclusion` (`backend/app/schemas.py`); invalid output raises and triggers the fallback. |
+| `backend/app/agent.py` · `model_json()`, `hosted_models_json()` and `hosted_json()` | Call the model (moving to the next model in `SANKET_LLM_FALLBACK_MODELS` when one is rate-limited or down) and parse its reply into the Pydantic schemas `AgentStep` and `AgentConclusion` (`backend/app/schemas.py`); invalid output raises and triggers the fallback. |
 | `backend/app/agent.py` · `investigate()` | The planning loop reads `step.tool` and `step.query` from the model and runs that tool through `Tools.call()` (`backend/app/analysis.py`), which only accepts names in `TOOL_NAMES`; `step.hypotheses` are recorded in the trail. |
 | `backend/app/agent.py` · `validate_conclusion()` | Checks the model's conclusion (every cited evidence ID must exist, supported and rejected hypotheses need evidence, confidence capped at medium); the result becomes the report's root cause, hypotheses, unknowns and recommended action. |
 | `backend/app/worker.py` · `process_one()` | When the report is actionable, the model's `recommended_action` becomes the title of a pending task that waits for human approval. |
@@ -71,7 +71,7 @@ The API never runs an investigation itself: it snapshots the active sources, que
 | Backend | Python 3.14, FastAPI, SQLAlchemy, Alembic, Pydantic |
 | Worker | Python process with lease-based job claiming and scheduled monitoring |
 | Database | PostgreSQL (Docker/production) or SQLite (local development) |
-| AI | Ollama (`qwen3`) or any OpenAI-compatible API (tested with Groq `openai/gpt-oss-120b`); `bge-m3` embeddings via Ollama |
+| AI | Ollama (`qwen3`) or any OpenAI-compatible API (tested with Groq `openai/gpt-oss-120b`, backup `openai/gpt-oss-20b`); `bge-m3` embeddings via Ollama |
 | Testing | pytest, Playwright, Ruff, Prettier; GitHub Actions CI |
 | Deployment | Docker Compose with an nginx frontend |
 
@@ -109,9 +109,10 @@ SANKET_LLM_BASE_URL=https://api.groq.com/openai/v1
 SANKET_LLM_API_KEY=<your key; never commit it>
 SANKET_LLM_MODEL=openai/gpt-oss-120b
 SANKET_LLM_REASONING_EFFORT=low
+SANKET_LLM_FALLBACK_MODELS=openai/gpt-oss-20b
 ```
 
-Investigation prompts, including business data from your sources, are then sent to that provider; check its data-use terms before uploading real data. Responses use strict JSON-schema output (set `SANKET_LLM_STRICT_SCHEMA=false` for providers that do not support it). Free tiers limit tokens per minute: SanketAI waits up to 60 seconds when the provider returns `Retry-After`, and otherwise falls back visibly to deterministic analysis. Evidence IDs in a model conclusion are validated, but numbers written in its prose are not; the margin bridge and evidence tab hold the calculated figures.
+Investigation prompts, including business data from your sources, are then sent to that provider; check its data-use terms before uploading real data. Responses use strict JSON-schema output (set `SANKET_LLM_STRICT_SCHEMA=false` for providers that do not support it). Free tiers limit tokens per minute: SanketAI waits up to 60 seconds when the provider returns `Retry-After`. When a model is still rate-limited (for example after Groq's daily limit) or down, the request moves to the next model in `SANKET_LLM_FALLBACK_MODELS`, and SanketAI skips the exhausted model until the provider says it resets; the report names the model that answered. On Groq, `openai/gpt-oss-20b` gave the same answers as `openai/gpt-oss-120b` on the margin and Dashain test packs. When every model is exhausted, SanketAI falls back visibly to deterministic analysis. Evidence IDs in a model conclusion are validated, but numbers written in its prose are not; the margin bridge and evidence tab hold the calculated figures.
 
 ```powershell
 docker compose logs -f api worker
@@ -233,7 +234,7 @@ See [architecture and tradeoffs](docs/architecture.md) and the downloaded [Verce
 - **Observational, not causal.** Confidence is qualitative and capped at medium. A revenue difference is an observed change, not attributable loss, and a met KPI target does not prove the task caused it.
 - **Strict data format.** Uploads must use SanketAI's column names, ISO dates and supported status values; there is no column-mapping step yet. At least 56 days of orders are needed for two comparable 28-day windows.
 - **Semantic search needs the local model.** Documents uploaded while `bge-m3` was unavailable match by keyword until they are uploaded again. Scanned PDFs need OCR first.
-- **Hosted models see your data.** With a hosted provider, prompts include business data from your sources. Free tiers are rate-limited; SanketAI waits briefly, then falls back to deterministic analysis.
+- **Hosted models see your data.** With a hosted provider, prompts include business data from your sources. Free tiers are rate-limited; SanketAI waits briefly, switches to the backup model, and only then falls back to deterministic analysis.
 - **Single business.** One shared workspace and one administrator; no public signup or tenant isolation.
 
 ## Future improvements
