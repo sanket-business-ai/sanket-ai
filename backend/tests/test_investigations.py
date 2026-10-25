@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 from types import SimpleNamespace
 
@@ -361,3 +362,45 @@ def test_malformed_pdf_and_oversize_upload_are_rejected(workspace, monkeypatch):
         client.post("/api/sources", data={"kind": "document"}, files={"file": ("big.txt", b"x" * 11)}).status_code
         == 413
     )
+
+
+@pytest.mark.parametrize(
+    ("question", "grounded"),
+    [("Why did our sales drop in the latest month?", True), ("Why did customer churn rise last month?", False)],
+)
+def test_the_model_gets_the_draft_only_when_it_supports_something(seeded, monkeypatch, question, grounded):
+    client, factory = seeded
+    monkeypatch.setattr(settings(), "agent_mode", "ollama")
+    monkeypatch.setattr(settings(), "max_agent_steps", 0)
+    briefs = []
+
+    def model(schema, messages):
+        briefs.append(messages)
+        return AgentConclusion.model_validate(
+            {
+                "root_cause": "The evidence does not settle the question.",
+                "causal_chain": ["Observed change"],
+                "evidence_ids": ["E1"],
+                "confidence": "low",
+                "hypotheses": [
+                    {
+                        "id": f"H{i}",
+                        "claim": f"Competing explanation number {i}",
+                        "status": "inconclusive",
+                        "supporting_evidence": [],
+                        "contradicting_evidence": [],
+                        "explanation": "Evidence is observational.",
+                    }
+                    for i in (1, 2)
+                ],
+                "unknowns": ["The counterfactual is unknown."],
+                "recommended_action": "Collect more evidence.",
+            }
+        )
+
+    monkeypatch.setattr(agent, "model_json", model)
+    run_investigation(client, factory, question)
+    [messages] = briefs
+    # A draft that supports nothing would anchor the model on supplier delays for an unrelated question.
+    assert ("deterministic_draft" in json.loads(messages[2]["content"])) is grounded
+    assert ("no draft" in messages[3]["content"]) is not grounded

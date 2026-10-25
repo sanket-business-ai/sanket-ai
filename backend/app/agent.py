@@ -785,7 +785,10 @@ def investigate(sources, question, mode, emit, challenged=False):
     if using_model:
         try:
             # The conclusion sees all evidence as a compact index plus the deterministic draft, not the
-            # whole planning history, so it fits small context windows and free-tier limits.
+            # whole planning history, so it fits small context windows and free-tier limits. A draft that
+            # supports nothing is only the generic supply template, so it is left out rather than anchoring
+            # the model on supplier delays for a question about something else.
+            grounded = any(h["status"] == "supported" for h in conclusion["hypotheses"])
             draft = {
                 "root_cause": conclusion["root_cause"],
                 "causal_chain": conclusion["causal_chain"],
@@ -804,13 +807,19 @@ def investigate(sources, question, mode, emit, challenged=False):
                         {
                             "evidence": evidence_index(tools.evidence, cited, config.llm_max_prompt_chars // 2),
                             "coverage_issues": tools.coverage(),
-                            "deterministic_draft": draft,
                         }
+                        | ({"deterministic_draft": draft} if grounded else {})
                     ),
                 },
                 {
                     "role": "user",
-                    "content": "Conclude now using only the evidence IDs listed above. The deterministic draft is a starting point: keep it where the evidence supports it and correct it where it does not. Include at least two competing hypotheses and explicitly list unknowns. Do not invent business impact calculations.",
+                    "content": "Conclude now using only the evidence IDs listed above. "
+                    + (
+                        "The deterministic draft is a starting point: keep it where the evidence supports it and correct it where it does not. "
+                        if grounded
+                        else "The fixed analysis found no measured explanation, so there is no draft: answer the question asked from the evidence, and mark a hypothesis supported only if its evidence directly shows it. "
+                    )
+                    + "Include at least two competing hypotheses and explicitly list unknowns. Do not invent business impact calculations.",
                 },
             ]
             conclusion = validate_conclusion(model_json(AgentConclusion, brief), tools.evidence)
