@@ -26,11 +26,11 @@ Also included: discovery runs (“Find what is going wrong”) without a questio
 
 SanketAI's core logic runs on AI output; the model does not just write the text shown to the user.
 
-- **Planning:** a large language model (local Ollama, or a hosted OpenAI-compatible API such as Groq with `openai/gpt-oss-120b`) returns schema-validated JSON choosing the next tool, its query and the current hypotheses. The worker executes that choice.
+- **Planning:** a large language model (local Ollama, or a hosted OpenAI-compatible API such as Groq with `openai/gpt-oss-120b`) returns schema-validated JSON choosing the next tool, its query and the current hypotheses. The worker executes that choice. Setting `SANKET_MAX_AGENT_STEPS=0` skips planning: the tools run in a fixed order and the model makes one call, for the conclusion, which suits free-tier limits.
 - **Conclusion:** the model reasons over a compact index of all collected evidence and a deterministic draft, and returns a structured conclusion. SanketAI rejects it if it cites evidence that was never collected, and caps its confidence at medium.
 - **Semantic retrieval:** `bge-m3` embeddings (multilingual, so Romanized-Nepali complaints match English questions) decide which document passages become evidence.
 
-If the model is unavailable or its output fails validation, `auto` mode falls back visibly to a deterministic analysis, and the report says which engine produced it.
+If the hosted model hits its rate limit (for example Groq's daily limit), the request moves to a backup model (`openai/gpt-oss-20b`). If no model is available or the output fails validation, `auto` mode falls back visibly to a deterministic analysis. The report always says which engine and model produced it.
 
 ### AI usage disclosure
 
@@ -71,7 +71,7 @@ The API never runs an investigation itself: it snapshots the active sources, que
 | Backend | Python 3.14, FastAPI, SQLAlchemy, Alembic, Pydantic |
 | Worker | Python process with lease-based job claiming and scheduled monitoring |
 | Database | PostgreSQL (Docker/production) or SQLite (local development) |
-| AI | Ollama (`qwen3`) or any OpenAI-compatible API (tested with Groq `openai/gpt-oss-120b`); `bge-m3` embeddings via Ollama |
+| AI | Ollama (`qwen3`) or any OpenAI-compatible API (tested with Groq `openai/gpt-oss-120b`, backup `openai/gpt-oss-20b`); `bge-m3` embeddings via Ollama |
 | Testing | pytest, Playwright, Ruff, Prettier; GitHub Actions CI |
 | Deployment | Docker Compose with an nginx frontend |
 
@@ -234,7 +234,7 @@ See [architecture and tradeoffs](docs/architecture.md) and the downloaded [Verce
 - **Observational, not causal.** Confidence is qualitative and capped at medium. A revenue difference is an observed change, not attributable loss, and a met KPI target does not prove the task caused it.
 - **Strict data format.** Uploads must use SanketAI's column names, ISO dates and supported status values; there is no column-mapping step yet. At least 56 days of orders are needed for two comparable 28-day windows.
 - **Semantic search needs the local model.** Documents uploaded while `bge-m3` was unavailable match by keyword until they are uploaded again. Scanned PDFs need OCR first.
-- **Hosted models see your data.** With a hosted provider, prompts include business data from your sources. Free tiers are rate-limited; SanketAI waits briefly, then falls back to deterministic analysis.
+- **Hosted models see your data.** With a hosted provider, prompts include business data from your sources. Free tiers are rate-limited; SanketAI waits briefly, switches to the backup model, and only then falls back to deterministic analysis.
 - **Single business.** One shared workspace and one administrator; no public signup or tenant isolation.
 
 ## Future improvements
