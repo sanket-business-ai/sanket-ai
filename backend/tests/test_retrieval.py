@@ -81,3 +81,13 @@ def test_uploads_still_work_without_the_embedding_model(workspace):
     assert upload.status_code == 201
     with factory() as db:
         assert "embedding" not in db.scalar(select(Source)).content["chunks"][0]
+
+
+def test_uploading_a_document_again_embeds_it_once_the_model_is_available(workspace, monkeypatch):
+    client, factory = workspace
+    first = client.post("/api/sources", data={"kind": "document"}, files={"file": ("note.md", b"Saman dhilo aayo.")})
+    monkeypatch.setattr(ingestion, "embed", fake_embed)
+    again = client.post("/api/sources", data={"kind": "document"}, files={"file": ("note.md", b"Saman dhilo aayo.")})
+    assert again.json()["id"] == first.json()["id"], "the duplicate still reuses the stored source"
+    with factory() as db:
+        assert db.scalar(select(Source)).content["chunks"][0]["embedding"] == fake_embed(["Saman dhilo aayo."])[0]

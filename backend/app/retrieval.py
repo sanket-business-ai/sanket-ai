@@ -12,8 +12,8 @@ import httpx
 from .config import settings
 
 STOP_WORDS = {"the", "and", "why", "our", "this", "what"}
-# bge-m3 scores unrelated business text around 0.3-0.4; below this a chunk is not treated as a match.
-MIN_SIMILARITY = 0.45
+# bge-m3 scores unrelated business text 0.33-0.48 (measured on the gadget packs); below this a chunk is not a match.
+MIN_SIMILARITY = 0.5
 BATCH = 32
 
 
