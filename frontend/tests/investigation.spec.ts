@@ -95,3 +95,43 @@ test('a founder can investigate, inspect evidence, challenge, and approve an act
   }
   expect(errors).toEqual([])
 })
+
+test('a margin investigation shows where the contribution went', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByLabel('Email address').fill('founder@sanketai.local')
+  await page.getByLabel('Password', { exact: true }).fill('e2e-only-password-12345')
+  await page.getByRole('button', { name: 'Sign in to workspace' }).click()
+  await expect(page.getByRole('heading', { name: 'Your business, understood.' })).toBeVisible()
+  // Demo packs load only into an empty workspace; the first test leaves the supply demo behind.
+  const loadMargin = page.getByRole('button', { name: 'Load margin demo' })
+  if (!(await loadMargin.isVisible())) {
+    await page.goto('/sources')
+    await page.getByRole('button', { name: 'Clear workspace' }).click()
+    await page.getByRole('button', { name: 'Clear everything' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await page.goto('/')
+  }
+  await loadMargin.click()
+  await expect(page.getByText('Recognized revenue', { exact: true })).toBeVisible()
+  await page.getByLabel('Ask a business question').fill('Why is our margin falling?')
+  await page.getByRole('button', { name: 'Investigate', exact: true }).click()
+  const chart = page.getByRole('list', { name: 'Contribution bridge' })
+  await expect(chart).toBeVisible({ timeout: 30000 })
+  await expect(page.getByRole('heading', { name: 'Where the margin went' })).toBeVisible()
+  await expect(chart.getByText('Courier fees', { exact: true })).toBeVisible()
+  await expect(chart.getByText('Baseline contribution', { exact: true })).toBeVisible()
+  await expect(chart.getByText('Current contribution', { exact: true })).toBeVisible()
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  const card = page.locator('.rounded-xl, [class*="card"]').filter({ has: chart }).last()
+  await card.screenshot({ path: '../.cache/margin-chart-light.png' })
+  await page.getByRole('button', { name: 'Use dark theme' }).click()
+  await card.screenshot({ path: '../.cache/margin-chart-dark.png' })
+  await page.setViewportSize({ width: 320, height: 900 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await card.screenshot({ path: '../.cache/margin-chart-mobile.png' })
+  await chart.getByRole('button', { name: /Courier fees/ }).click()
+  await expect(page.getByRole('tab', { name: /^Evidence/ })).toHaveAttribute('data-state', 'active')
+  expect(errors).toEqual([])
+})

@@ -20,6 +20,7 @@ import type { Investigation, InvestigationDetail, Trail } from '@/lib/types'
 import { cn, currency, dateTime } from '@/lib/utils'
 import { ErrorState, Loading, MetricCard, Status } from '@/components/shared'
 import { ActionCard } from '@/components/ActionCard'
+import { MarginWaterfall } from '@/components/MarginWaterfall'
 import { SourcePreview } from '@/components/SourcePreview'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -433,6 +434,9 @@ export default function InvestigationView() {
                   </Card>
                 </div>
               </section>
+              {report.scenario === 'margin' && report.margin_bridge?.available && (
+                <MarginWaterfall bridge={report.margin_bridge} onEvidence={showEvidence} />
+              )}
               <div className="metric-grid mt-6">
                 {report.metrics.map((metric) => (
                   <MetricCard key={metric.key} metric={metric} />
