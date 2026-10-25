@@ -244,8 +244,8 @@ See [architecture and tradeoffs](docs/architecture.md) and the downloaded [Verce
 - Bikram Sambat dates and festival-aware comparisons (this Dashain against last Dashain).
 - Connectors for Daraz and accounting software, and private Google Sheets through sign-in.
 - OCR for scanned invoices and receipts.
-- Nepali-language questions and interface.
-- Multiple businesses and team accounts.
+- Provide a Nepali-language interface and support for questions in Nepali.
+- Enable multiple business management and team accounts.
 
 ## License
 
