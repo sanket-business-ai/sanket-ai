@@ -15,7 +15,14 @@ import {
   UploadCloud,
 } from 'lucide-react'
 import { api, download, post } from '@/lib/api'
-import type { Contracts, DemoPack, DemoResult, DocumentSearchResponse, Source, System } from '@/lib/types'
+import type {
+  Contracts,
+  DemoPack,
+  DemoResult,
+  DocumentSearchResponse,
+  Source,
+  System,
+} from '@/lib/types'
 import { dateTime, number } from '@/lib/utils'
 import { Empty, ErrorState, Loading, PageHeading } from '@/components/shared'
 import { BulkUpload } from '@/components/BulkUpload'

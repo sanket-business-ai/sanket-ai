@@ -11,6 +11,7 @@ import {
   FlaskConical,
   GitBranch,
   Loader2,
+  Printer,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -209,12 +210,23 @@ export default function InvestigationView() {
         <div className="flex flex-wrap gap-2">
           {report && (
             <>
-              <Button variant="outline" size="sm" asChild>
-                <a href={`/api/investigations/${id}/export`} download>
-                  <Download />
-                  Export report
-                </a>
+              <Button
+                size="sm"
+                onClick={() => window.print()}
+                aria-label="Save investigation report as PDF"
+                title="Opens your browser's print dialog; choose Save as PDF"
+              >
+                <Printer />
+                Save as PDF
               </Button>
+              <a
+                href={`/api/investigations/${id}/export`}
+                download
+                className="self-center text-xs font-medium text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+              >
+                <Download size={13} className="mr-1 inline" />
+                Download data (JSON)
+              </a>
               <Button
                 size="sm"
                 disabled={rerun.isPending}
@@ -272,14 +284,16 @@ export default function InvestigationView() {
             <Badge variant={report.engine === 'deterministic' ? 'warning' : 'default'}>
               <Sparkles size={12} />
               {report.engine !== 'deterministic'
-                ? `${report.engine === 'hosted' ? 'Hosted agent' : 'Local agent'} · ${report.model}`
-                : 'Deterministic evidence analysis'}
+                ? 'AI-assisted analysis'
+                : 'Evidence-based analysis'}
             </Badge>
-            <Badge variant="outline">{report.confidence} evidence strength</Badge>
+            <Badge variant="outline">
+              Evidence strength: {report.confidence.replaceAll('_', ' ')}
+            </Badge>
             {report.challenged && (
               <Badge variant="default">
                 <FlaskConical size={11} />
-                Adversarial pass completed
+                Checked against other explanations
               </Badge>
             )}
           </div>
@@ -288,12 +302,20 @@ export default function InvestigationView() {
               {report.model_notice}
             </p>
           )}
+          <p className="mb-3 text-xs leading-5 text-muted-foreground">
+            Start with the summary. The other sections show possible explanations, the evidence
+            behind them, and the steps taken.
+          </p>
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="max-w-full overflow-x-auto">
-              <TabsTrigger value="report">Report</TabsTrigger>
-              <TabsTrigger value="hypotheses">Hypotheses ({report.hypotheses.length})</TabsTrigger>
-              <TabsTrigger value="evidence">Evidence ({report.evidence.length})</TabsTrigger>
-              <TabsTrigger value="trail">Trail ({job.trail.length})</TabsTrigger>
+              <TabsTrigger value="report">Summary</TabsTrigger>
+              <TabsTrigger value="hypotheses">
+                Possible causes ({report.hypotheses.length})
+              </TabsTrigger>
+              <TabsTrigger value="evidence">
+                Evidence &amp; sources ({report.evidence.length})
+              </TabsTrigger>
+              <TabsTrigger value="trail">Investigation steps ({job.trail.length})</TabsTrigger>
             </TabsList>
             <TabsContent value="report">
               <section className="report-grid">
@@ -305,7 +327,9 @@ export default function InvestigationView() {
                           <Bot size={20} />
                         </span>
                         <div className="space-y-2">
-                          <Badge variant={report.engine === 'deterministic' ? 'secondary' : 'default'}>
+                          <Badge
+                            variant={report.engine === 'deterministic' ? 'secondary' : 'default'}
+                          >
                             <Sparkles size={12} />
                             {report.engine === 'deterministic'
                               ? 'SanketAI evidence response'
@@ -313,7 +337,7 @@ export default function InvestigationView() {
                           </Badge>
                           <p className="eyebrow flex items-center gap-2 text-primary">
                             <ShieldCheck size={16} />
-                            STRONGEST SUPPORTED EXPLANATION
+                            BEST-SUPPORTED EXPLANATION
                           </p>
                         </div>
                       </div>
@@ -321,6 +345,9 @@ export default function InvestigationView() {
                     <CardContent>
                       <p className="text-lg font-medium leading-8 tracking-tight">
                         {report.root_cause}
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                        Based on the information available; this is not proof of cause.
                       </p>
                       <div className="mt-6 flex flex-wrap items-center gap-2">
                         {report.causal_chain.map((item, index) => (
@@ -562,6 +589,122 @@ export default function InvestigationView() {
               <TrailView trail={job.trail} running={false} />
             </TabsContent>
           </Tabs>
+          <div className="print-report" aria-hidden="true">
+            <header className="print-report-header">
+              <p className="print-report-brand">SanketAI</p>
+              <h1>Business investigation report</h1>
+              <p>{job.question}</p>
+              <p className="print-report-meta">
+                Prepared {new Date().toLocaleDateString()} · Evidence strength:{' '}
+                {report.confidence.replaceAll('_', ' ')}
+              </p>
+              <p className="print-report-meta">
+                Current period: {report.period.current_start} — {report.period.current_end}
+                {' · '}
+                Comparison period: {report.period.previous_start} — {report.period.previous_end}
+              </p>
+            </header>
+            <section className="print-report-section">
+              <h2>Summary</h2>
+              <p>{report.root_cause}</p>
+              <h3>How the explanation connects</h3>
+              <ol>
+                {report.causal_chain.map((item, index) => (
+                  <li key={`${index}-${item}`}>{item}</li>
+                ))}
+              </ol>
+              <p>
+                Supporting evidence:{' '}
+                {report.evidence_ids.length ? report.evidence_ids.join(', ') : 'None listed'}
+              </p>
+            </section>
+            <section className="print-report-section">
+              <h2>Business impact</h2>
+              {report.scenario === 'margin' &&
+              report.impact.observed_contribution_difference != null ? (
+                <p>
+                  {currency(report.impact.observed_contribution_difference)} — observed contribution
+                  difference from recorded costs.
+                </p>
+              ) : (
+                <p>
+                  {report.impact.observed_revenue_difference === null
+                    ? 'Insufficient baseline'
+                    : currency(report.impact.observed_revenue_difference)}
+                  {' — '}
+                  {report.impact.label}
+                </p>
+              )}
+            </section>
+            {report.metrics.length > 0 && (
+              <section className="print-report-section">
+                <h2>Key measures</h2>
+                {report.metrics.map((metric) => (
+                  <p key={metric.key}>
+                    {metric.label}:{' '}
+                    {metric.unit === 'NPR'
+                      ? currency(metric.current)
+                      : `${metric.current.toLocaleString(undefined, { maximumFractionDigits: 1 })}${metric.unit === '%' ? '%' : ''}`}
+                    {' · '}
+                    {metric.change === null
+                      ? 'No comparison available'
+                      : `Change from comparison: ${metric.change > 0 ? '+' : ''}${metric.change.toFixed(1)}${metric.unit === '%' ? ' percentage points' : '%'}`}
+                  </p>
+                ))}
+              </section>
+            )}
+            <section className="print-report-section">
+              <h2>Recommended next step</h2>
+              <p>{report.recommended_action}</p>
+            </section>
+            <section className="print-report-section">
+              <h2>Other possible explanations</h2>
+              {report.hypotheses.map((hypothesis) => (
+                <article className="print-report-card" key={hypothesis.id}>
+                  <h3>
+                    {hypothesis.id}: {hypothesis.claim}
+                  </h3>
+                  <p>{hypothesis.status.replaceAll('_', ' ')}</p>
+                  <p>{hypothesis.explanation}</p>
+                  <p>
+                    Evidence for: {hypothesis.supporting_evidence.join(', ') || 'None collected'}
+                    {' · '}
+                    Evidence against:{' '}
+                    {hypothesis.contradicting_evidence.join(', ') || 'None collected'}
+                  </p>
+                </article>
+              ))}
+            </section>
+            <section className="print-report-section">
+              <h2>Evidence and sources</h2>
+              {report.evidence.map((item) => (
+                <article className="print-report-card" key={item.id}>
+                  <h3>
+                    {item.id} · {item.type}
+                  </h3>
+                  <p>{item.claim}</p>
+                  {item.calculation && <p>Calculation: {item.calculation}</p>}
+                  {item.sources.map((itemSource) => (
+                    <p key={itemSource.id}>
+                      Source: {itemSource.name} — {itemSource.locator}
+                    </p>
+                  ))}
+                </article>
+              ))}
+            </section>
+            <section className="print-report-section">
+              <h2>What is still unknown</h2>
+              <ul>
+                {report.unknowns.map((unknown, index) => (
+                  <li key={`${index}-${unknown}`}>{unknown}</li>
+                ))}
+              </ul>
+            </section>
+            <footer className="print-report-footer">
+              This is an AI-assisted explanation based on the available information, not proof of
+              cause. Document excerpts are attributed statements and may contain unverified claims.
+            </footer>
+          </div>
         </>
       ) : (
         <TrailView trail={job.trail} running={false} />

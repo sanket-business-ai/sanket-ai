@@ -1,4 +1,3 @@
-
 import sys
 from pathlib import Path
 
@@ -8,10 +7,7 @@ from app.retrieval import search
 
 def main():
     if len(sys.argv) < 3:
-        print(
-            'Usage: python demo_semantic_upload.py '
-            '"path/to/document.pdf" "your question"'
-        )
+        print('Usage: python demo_semantic_upload.py "path/to/document.pdf" "your question"')
         return
 
     pdf_path = Path(sys.argv[1])
@@ -31,10 +27,7 @@ def main():
     )
 
     chunks = content["chunks"]
-    embedded_count = sum(
-        bool(chunk.get("embedding"))
-        for chunk in chunks
-    )
+    embedded_count = sum(bool(chunk.get("embedding")) for chunk in chunks)
 
     print(f"   PDF: {pdf_path.name}")
     print(f"   Chunks extracted: {chunk_count}")
@@ -70,4 +63,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

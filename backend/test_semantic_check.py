@@ -1,4 +1,3 @@
-
 from app import retrieval
 
 
@@ -20,9 +19,7 @@ def test_semantic_retrieval():
                     },
                     {
                         "text": "The supplier increased wholesale prices.",
-                        "embedding": retrieval._embed_query(
-                            "The supplier increased wholesale prices."
-                        ),
+                        "embedding": retrieval._embed_query("The supplier increased wholesale prices."),
                     },
                 ]
             },

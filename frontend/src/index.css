@@ -758,6 +758,101 @@
   border: 4px solid var(--card);
   border-radius: 50%;
 }
+.print-report {
+  display: none;
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm;
+  }
+  html,
+  body {
+    min-width: 0 !important;
+    background: #fff !important;
+    color: #111827 !important;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  .print-report,
+  .print-report * {
+    visibility: visible !important;
+  }
+  .print-report {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    color: #111827 !important;
+    background: #fff !important;
+    font-family: Arial, sans-serif !important;
+    font-size: 10pt !important;
+    line-height: 1.55 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-report-header {
+    border-bottom: 2px solid #007f73;
+    margin-bottom: 20pt;
+    padding-bottom: 12pt;
+  }
+  .print-report-brand {
+    color: #007f73;
+    font-size: 11pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .print-report h1 {
+    margin: 5pt 0 8pt;
+    font-size: 21pt;
+    line-height: 1.2;
+  }
+  .print-report-header > p:not(.print-report-brand) {
+    margin-top: 5pt;
+  }
+  .print-report-meta,
+  .print-report-footer {
+    color: #475569 !important;
+    font-size: 9pt !important;
+  }
+  .print-report-section {
+    margin: 16pt 0;
+  }
+  .print-report h2 {
+    margin: 0 0 7pt;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 4pt;
+    font-size: 14pt;
+  }
+  .print-report h3 {
+    margin: 9pt 0 4pt;
+    font-size: 10pt;
+  }
+  .print-report p {
+    margin: 4pt 0;
+    overflow-wrap: anywhere;
+  }
+  .print-report ol,
+  .print-report ul {
+    margin: 5pt 0;
+    padding-left: 20pt;
+  }
+  .print-report-card {
+    break-inside: avoid;
+    border: 1px solid #cbd5e1;
+    border-radius: 5pt;
+    margin: 7pt 0;
+    padding: 7pt 9pt;
+  }
+  .print-report-footer {
+    border-top: 1px solid #cbd5e1;
+    margin-top: 18pt;
+    padding-top: 8pt;
+  }
+}
 .upload-zone {
   display: flex;
   flex-direction: column;
