@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
+from test_investigations import run_investigation
 
 from app import ingestion, retrieval
 from app.analysis import Tools
@@ -9,7 +10,12 @@ from app.config import settings
 from app.db import Source
 
 # A tiny stand-in for bge-m3: one dimension per idea, recognising English and Romanized Nepali words.
-IDEAS = [{"late", "delay", "dhilo", "slow"}, {"price", "prices", "cost", "mahango"}, {"stock", "sold", "sakiyo"}]
+IDEAS = [
+    {"late", "delay", "dhilo", "slow"},
+    {"price", "prices", "cost", "mahango"},
+    {"stock", "sold", "sakiyo"},
+    {"monsoon", "rain", "barsat"},
+]
 
 
 def fake_embed(texts):
@@ -91,3 +97,22 @@ def test_uploading_a_document_again_embeds_it_once_the_model_is_available(worksp
     assert again.json()["id"] == first.json()["id"], "the duplicate still reuses the stored source"
     with factory() as db:
         assert db.scalar(select(Source)).content["chunks"][0]["embedding"] == fake_embed(["Saman dhilo aayo."])[0]
+
+
+def test_several_queries_cite_each_chunk_once_with_its_best_score(semantic):
+    sources = [document("complaints.md", "Saman dhilo aayo."), document("letter.md", "Prices rose by 10%.")]
+    result = Tools(sources).search_documents(["Why are parcels late?", "price increase"])
+    assert sorted(m["source"] for m in result["matches"]) == ["complaints.md", "letter.md"]
+    assert all(m["score"] > 0.9 for m in result["matches"])
+
+
+def test_the_verification_search_also_uses_the_question(seeded, monkeypatch):
+    client, factory = seeded
+    monkeypatch.setattr(settings(), "embedding_model", "bge-m3")
+    monkeypatch.setattr(retrieval, "embed", fake_embed)
+    monkeypatch.setattr(ingestion, "embed", fake_embed)
+    note = ("roads.md", b"Barsat le pahad ko bato bandh.")
+    assert client.post("/api/sources", data={"kind": "document"}, files={"file": note}).status_code == 201
+    # Only the question shares an idea with the note; no built-in search terms would find it.
+    job = run_investigation(client, factory, "Why did our sales drop in the monsoon rain?")
+    assert "roads.md" in {s["name"] for e in job["report"]["evidence"] for s in e["sources"]}

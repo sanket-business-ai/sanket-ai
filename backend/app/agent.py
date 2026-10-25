@@ -37,6 +37,7 @@ CHECKS = {
     ],
 }
 MODEL_NOTES = ("available", "coverage_issues", "missing", "limitation", "unpriced_deliveries", "period")
+SEARCH_TERMS = "supplier delay inventory demand price complaints"
 ADVERSARIAL = {
     "supply": (
         "Adversarial pass: seek pricing, demand, campaign and operations counter-evidence.",
@@ -770,7 +771,9 @@ def investigate(sources, question, mode, emit, challenged=False):
             emit("fallback", model_error + " Continuing with deterministic evidence analysis.", {})
     for name, reason in CHECKS[scenario]:
         if name not in executed:
-            run(name, reason, "supplier delay inventory demand price complaints" if name == "search_documents" else "")
+            # Documents are searched with the question itself as well as the standing checks: a natural
+            # question finds what keyword-style terms miss (a monsoon advisory for "Why are deliveries late?").
+            run(name, reason, [question, SEARCH_TERMS] if name == "search_documents" else "")
     emit(
         "challenge",
         f"Weighed {len(tools.evidence)} pieces of evidence against rival explanations, separating correlation from cause.",
