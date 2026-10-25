@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from .config import settings
 from .db import Source
+from .retrieval import embed
 
 CONTRACTS = {
     "orders": {
@@ -215,6 +216,11 @@ def parse_upload(data, filename, kind):
             raise ValueError("No readable text found. Scanned PDFs require OCR first.")
         if len(chunks) > 500:
             raise ValueError("Document exceeds 500 text chunks")
+        # Embeddings make search find meaning, not only shared words; without them search uses keywords.
+        vectors = embed([chunk["text"] for chunk in chunks])
+        if vectors:
+            for chunk, vector in zip(chunks, vectors):
+                chunk["embedding"] = [round(value, 5) for value in vector]
         return {"chunks": chunks}, len(chunks)
     if kind not in CONTRACTS:
         raise ValueError("Unknown dataset type")

@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     secure_cookies: bool = False
     session_hours: int = 12
     llm_provider: str = "ollama"
+    # Document embeddings always come from the local Ollama; an empty value turns semantic search off.
+    embedding_model: str = "bge-m3"
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3:8b"
     # Hosted OpenAI-compatible provider (Groq, Gemini, OpenRouter). Prompts include business data.
